@@ -1,0 +1,32 @@
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE files
+.vscode/
+.idea/
+.cursor/
+
+# Ignore virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ignore node_modules
+node_modules/
+
+# Ignore .codebuddy temp files
+.codebuddy/
+.codebuddycn/
+
+# Ignore other system files
+.Trash/
+.local/
+*.log

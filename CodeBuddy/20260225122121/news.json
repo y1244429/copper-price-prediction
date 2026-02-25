@@ -1,0 +1,122 @@
+[
+  {
+    "title": "英伟达GTC 2026将发布\"前所未见\"的全新AI芯片",
+    "source": "搜狐科技",
+    "url": "https://www.sohu.com/a/988718011_100085330",
+    "summary": "英伟达CEO黄仁勋预告将于GTC 2026大会发布\"世界前所未见\"的全新芯片，业内普遍预测是基于Rubin架构的下一代计算芯片或Feynman系列，算力规模有望实现翻倍增长，新芯片将针对多模态大模型、具身智能、自动驾驶等场景优化。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "三星HBM4芯片开始向英伟达批量供应，实现全球首次大规模量产交付",
+    "source": "腾讯科技",
+    "url": "https://so.html5.qq.com/page/real/search_news?docid=70000021_249698a9e3b67152",
+    "summary": "三星电子将于本月下旬开始向英伟达批量供应HBM4高带宽存储芯片，标志着全球范围内HBM4芯片首次实现大规模量产与交付。此举为英伟达新一代人工智能加速器Vera Rubin平台的发布提供坚实保障。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "Meta与AMD达成重磅协议：部署6GW GPU并获10%股权",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902lbjg.html",
+    "summary": "Meta宣布与AMD达成多年期协议，将在其AI数据中心部署规模高达6吉瓦的AMD GPU，并配套使用AI优化型CPU。Meta将有权收购1.6亿股AMD股票（约占AMD总股本的10%），这是Meta继采购数百万颗英伟达处理器后的又一重大AI基建投资。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "Wayve完成12亿美元D轮融资，估值达86亿美元",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902lc2e.html",
+    "summary": "英国自动驾驶与具身人工智能企业Wayve宣布完成总额12亿美元的D轮融资，投后估值升至86亿美元。本轮融资吸引了软银、微软、英伟达、Uber、梅赛德斯-奔驰、日产、Stellantis等多家科技与汽车行业重点企业参与。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "马斯克设想从月球电磁弹射AI卫星，构建在轨数据中心网络",
+    "source": "今日头条",
+    "url": "https://www.toutiao.com/article/7610590669911999011/",
+    "summary": "马斯克设想从月球用电磁弹射方式向地球轨道发射卫星，以更便捷部署专用于AI的数据中心卫星网络。SpaceX已向美联邦通信委员会提交申请，拟在近地轨道部署由多达100万颗卫星组成的系统，构建在轨数据中心网络支持AI等高性能计算需求。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  },
+  {
+    "title": "我国量子计算取得新突破：首款自主研发操作系统\"本源司南\"开放下载",
+    "source": "东方财富网",
+    "url": "http://finance.eastmoney.com/a/202602243652860038.html",
+    "summary": "我国首款自主研发量子计算机操作系统\"本源司南\"正式开放线上下载，这是全球首个开放下载的量子计算机操作系统。该系统兼容超导、离子阱、中性原子等多种主流技术路线，已部署在\"本源悟空\"系列量子计算机上并对外开放，将有效降低开发门槛，加速我国量子计算生态自主化建设。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  },
+  {
+    "title": "特斯拉首台量产Cybercab下线：无方向盘无踏板的完全自动驾驶车型",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902j57g.html",
+    "summary": "第一辆量产版特斯拉Cybercab在美国得克萨斯州超级工厂下线，这款专为Robotaxi服务的运营车辆没有方向盘、没有踏板，甚至取消了后视镜，标志着特斯拉对于其完全自动驾驶技术的信心达到新高度，汽车工业设计理念迎来彻底颠覆。",
+    "timestamp": "2026年2月22日",
+    "platform": "媒体"
+  },
+  {
+    "title": "宇树科技重磅发布四足机器人Unitree As2，速度达5m/s",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902l010.html?from=tech",
+    "summary": "宇树科技发布四足机器人Unitree As2，极限速度达5m/s，采用仿生具身大模型，可在复杂地形和恶劣环境自如行走，并升级ISS3.0智能伴随系统，可选配加载7轴灵巧机械臂等配件，彰显中国机器人技术的快速发展。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  },
+  {
+    "title": "千寻智能宣布完成近20亿元融资，具身智能领域再获大额注资",
+    "source": "今日头条",
+    "url": "https://www.toutiao.com/article/7610590669911999011/",
+    "summary": "具身智能企业千寻智能宣布连续完成两轮融资近20亿元，本轮融资阵容包括云锋基金、某头部国资机构、混沌投资（葛卫东）、红杉中国等机构，TCL创投、明荟致远等产业资本加注，重庆产业投资母基金、杭州金投等国有资本支持，显示具身智能领域获得资本高度关注。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  },
+  {
+    "title": "普华永道美国将部署Anthropic企业级人工智能插件",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902l010.html?from=tech",
+    "summary": "普华永道美国与Anthropic宣布达成协议，加速在\"高度监管\"行业中部署企业级人工智能插件，首先从人工智能原生金融、医疗保健和生命科学领域入手。普华永道将与Anthropic合作帮助客户嵌入Claude，包括Claude开发者平台、Claude.ai、Claude Cowork和Claude Code。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  },
+  {
+    "title": "Anthropic更新Claude Cowork工具，提升普通办公人员工作效率",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902kyk6.html",
+    "summary": "Anthropic为其面向知识工作者的工具Claude Cowork推出了一系列连接器与插件，CEO Dario Amodei此前曾震动华尔街。Claude Cowork现已迎来更大范围的正式发布，旨在实现人力资源、投资银行和设计等领域工作的自动化。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  },
+  {
+    "title": "亚马逊AGI实验室负责人David Luan宣布将离职",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902lbse.html?from=tech",
+    "summary": "亚马逊旗下通用人工智能(AGI)实验室负责人David Luan在LinkedIn上宣布将于本周末离职，这距离他通过\"人才收购\"交易加入亚马逊才不到两年。Luan表示决定离开是为了\"酝酿一些新东西\"，此类AI人才收购交易已引起美国联邦贸易委员会(FTC)的关注。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "2026年L2级辅助驾驶渗透率将达66.1%，城市NOA功能快速普及",
+    "source": "腾讯科技",
+    "url": "https://so.html5.qq.com/page/real/search_news?docid=70000021_84869718b8b40852",
+    "summary": "《2025城市NOA汽车辅助驾驶研究报告》指出，2025年前三季度具备L2级功能的乘用车新车销量同比增长21.2%，渗透率达64%，2025年底或升至66.1%。城市NOA功能作为L2级辅助驾驶中的高级功能，正在快速普及，标志着自动驾驶技术商业化应用进入新阶段。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "长电科技江阴公司注册资本增至25亿元，增幅达24900%",
+    "source": "36氪",
+    "url": "https://www.36kr.com/newsflashes/3698108275453577",
+    "summary": "长电科技(江阴)有限公司发生工商变更，注册资本由1000万元人民币增至25亿元人民币，增幅24900%。该公司由江苏长电科技股份有限公司全资持股，经营范围涵盖集成电路制造、集成电路芯片及产品制造等，显示国内半导体产业持续加大投资力度。",
+    "timestamp": "2026年2月25日",
+    "platform": "媒体"
+  },
+  {
+    "title": "小鹏汽车CEO何小鹏发布开工信：2026年将是史无前例的\"产品大年\"",
+    "source": "新浪科技",
+    "url": "https://k.sina.com.cn/article_7857201856_1d45362c001902kvb2.html",
+    "summary": "小鹏汽车CEO何小鹏向全体员工发布开工信，指出2025年小鹏汽车全年交付429445台，同比增长126%。何小鹏展望2026年，提出率先在中国抓住属于自动驾驶的\"DeepSeek\"时刻，小鹏第二代自动驾驶系统即将推出。",
+    "timestamp": "2026年2月24日",
+    "platform": "媒体"
+  }
+]
