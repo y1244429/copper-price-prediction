@@ -739,6 +739,21 @@ def all_predictions():
     })
 
 
+@app.route('/api/factor-analysis')
+def factor_analysis():
+    """因子分析API"""
+    return jsonify(model.get_factor_analysis())
+
+
+@app.route('/api/stress-test')
+def stress_test():
+    """压力测试API"""
+    scenarios = request.args.getlist('scenarios')
+    if not scenarios:
+        scenarios = ['china_demand_drop', 'dollar_crisis', 'supply_shock']
+    return jsonify(model.stress_test(scenarios=scenarios))
+
+
 if __name__ == '__main__':
     port = 5001
     print("=" * 60)
@@ -751,6 +766,8 @@ if __name__ == '__main__':
     print(f"   - GET /api/long?years=1       长期预测")
     print(f"   - GET /api/assessment        市场评估")
     print(f"   - GET /api/all               综合预测")
+    print(f"   - GET /api/factor-analysis   因子分析")
+    print(f"   - GET /api/stress-test       压力测试")
     print("=" * 60)
     print("\n按 Ctrl+C 停止服务\n")
 
