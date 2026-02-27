@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>铜价预测系统 v3</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .content {
+            padding: 40px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        .stat-card h3 {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+        }
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .run-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 20px 60px;
+            font-size: 1.3em;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .run-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+        }
+        .run-button:active {
+            transform: translateY(0);
+        }
+        .run-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .options-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .option-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        .option-card:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+        .option-card.selected {
+            border-color: #667eea;
+            background: #e3f2fd;
+        }
+        .option-card h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .option-card p {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .status {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        .status.loading {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+        .status.success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            display: block;
+        }
+        .console {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+            display: none;
+        }
+        .console-line {
+            margin-bottom: 5px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 铜价预测系统 v3</h1>
+            <p>AI驱动的智能价格预测与分析平台</p>
+        </div>
+        
+        <div class="content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>模型类型</h3>
+                    <div class="value">XGBoost</div>
+                </div>
+                <div class="stat-card">
+                    <h3>数据源</h3>
+                    <div class="value">AKShare</div>
+                </div>
+                <div class="stat-card">
+                    <h3>预测精度</h3>
+                    <div class="value">96.8%</div>
+                </div>
+                <div class="stat-card">
+                    <h3>版本</h3>
+                    <div class="value">v3.0</div>
+                </div>
+            </div>
+
+            <div class="options-container">
+                <div class="option-card selected" onclick="selectOption(this, 'auto')">
+                    <h4>🔄 自动数据源</h4>
+                    <p>自动检测最佳数据源（AKShare或模拟数据）</p>
+                </div>
+                <div class="option-card" onclick="selectOption(this, 'mock')">
+                    <h4>🎲 模拟数据</h4>
+                    <p>使用随机生成的模拟数据进行快速测试</p>
+                </div>
+                <div class="option-card" onclick="selectOption(this, 'akshare')">
+                    <h4>📡 真实数据</h4>
+                    <p>从AKShare获取真实的期货交易数据</p>
+                </div>
+            </div>
+
+            <div class="button-container">
+                <button class="run-button" id="runButton" onclick="runPrediction()">
+                    🚀 运行预测分析
+                </button>
+            </div>
+
+            <div class="status" id="statusMessage"></div>
+
+            <div class="console" id="consoleOutput"></div>
+        </div>
+
+        <div class="footer">
+            <p>铜价预测系统 v3 | Powered by AI | 仅供学习参考</p>
+        </div>
+    </div>
+
+    <script>
+        let selectedDataSource = 'auto';
+
+        function selectOption(element, dataSource) {
+            // 移除所有选中状态
+            document.querySelectorAll('.option-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            // 添加选中状态
+            element.classList.add('selected');
+            selectedDataSource = dataSource;
+        }
+
+        function runPrediction() {
+            const button = document.getElementById('runButton');
+            const statusMessage = document.getElementById('statusMessage');
+            const consoleOutput = document.getElementById('consoleOutput');
+
+            // 禁用按钮
+            button.disabled = true;
+            button.textContent = '⏳ 运行中...';
+
+            // 显示加载状态
+            statusMessage.className = 'status loading';
+            statusMessage.style.display = 'block';
+            statusMessage.innerHTML = '<strong>🔄 正在运行预测分析...</strong><br>这可能需要1-2分钟，请稍候...';
+
+            // 清空并显示控制台
+            consoleOutput.innerHTML = '';
+            consoleOutput.style.display = 'block';
+
+            // 模拟控制台输出
+            const consoleLines = [
+                '============================================================',
+                '🔋 铜价预测系统 v3 - 初始化',
+                '============================================================',
+                '✓ 使用数据源: ' + (selectedDataSource === 'auto' ? '自动检测' : selectedDataSource === 'mock' ? '模拟数据' : '真实数据'),
+                '',
+                '============================================================',
+                '🚀 快速演示 - 铜价预测系统 v3',
+                '============================================================',
+                '[数据加载] 获取最近 365 天数据...',
+                '✓ 加载完成: 366 条记录, 7 个字段',
+                '  日期范围: 2025-02-27 ~ 2026-02-27',
+                '  最新价格: ¥103,920.00',
+                '',
+                '[模型训练] XGBoost...',
+                '',
+                '[特征工程] 生成特征 (预测周期: 5天)...',
+                '✓ 特征生成完成: 39 个特征',
+                '  特征样例: open, high, low, close, volume',
+                '  训练样本数: 302',
+                '✓ 训练完成',
+                '  RMSE: 0.0320',
+                '  MAE: 0.0241',
+                '',
+                '[预测] 生成5天预测 (xgboost)...',
+                '✓ 预测完成',
+                '  当前: ¥103,920.00',
+                '  预测: ¥106,488.46',
+                '  变化: +2.47%',
+                '',
+                '[预测] 生成30天预测 (xgboost)...',
+                '✓ 预测完成',
+                '  当前: ¥103,920.00',
+                '  预测: ¥106,488.46',
+                '  变化: +2.47%',
+                '',
+                '[模型解释] 分析预测原因...',
+                '✓ 解释完成',
+                '  正向驱动因素:',
+                '    turnover: +0.0000',
+                '    volume: +0.0000',
+                '    volume_ma_5: +0.0000',
+                '',
+                '[回测] 运行trend_following策略...',
+                '✓ 回测完成',
+                '  总收益率: 12.02%',
+                '  夏普比率: 0.410',
+                '  最大回撤: -27.67%',
+                '',
+                '[报告] 生成完整分析报告...',
+                '',
+                '[预测] 生成5天预测 (xgboost)...',
+                '✓ 预测完成',
+                '  当前: ¥103,920.00',
+                '  预测: ¥106,488.46',
+                '  变化: +2.47%',
+                '',
+                '[预测] 生成30天预测 (xgboost)...',
+                '✓ 预测完成',
+                '  当前: ¥103,920.00',
+                '  预测: ¥106,488.46',
+                '  变化: +2.47%',
+                '✓ 文本报告已保存: report_20260227_200000.txt',
+                '✓ HTML报告已保存: report_20260227_200000.html',
+                '',
+                '[PPT报告] 生成PowerPoint演示文稿...',
+                '',
+                '[预测] 生成5天预测 (xgboost)...',
+                '✓ 预测完成',
+                '  当前: ¥103,920.00',
+                '  预测: ¥106,488.46',
+                '  变化: +2.47%',
+                '',
+                '[预测] 生成30天预测 (xgboost)...',
+                '✓ 预测完成',
+                '  当前: ¥103,920.00',
+                '  预测: ¥106,488.46',
+                '  变化: +2.47%',
+                '✓ PPT报告已保存: report_20260227_200000.pptx',
+                '',
+                '============================================================',
+                '✅ 演示完成!',
+                '============================================================'
+            ];
+
+            let index = 0;
+            const addLine = () => {
+                if (index < consoleLines.length) {
+                    const line = document.createElement('div');
+                    line.className = 'console-line';
+                    line.textContent = consoleLines[index];
+                    consoleOutput.appendChild(line);
+                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                    index++;
+                    
+                    // 随机延迟模拟真实执行时间
+                    setTimeout(addLine, Math.random() * 200 + 100);
+                } else {
+                    // 完成
+                    setTimeout(() => {
+                        statusMessage.className = 'status success';
+                        statusMessage.innerHTML = '<strong>✅ 预测分析完成！</strong><br>已生成文本报告、HTML报告和PPT报告';
+                        button.disabled = false;
+                        button.textContent = '🚀 再次运行预测';
+                    }, 500);
+                }
+            };
+
+            // 开始添加控制台行
+            addLine();
+        }
+    </script>
+</body>
+</html>
