@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # 主应用服务
+  copper-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_SOURCE=auto
+      - MODEL_PATH=/app/models
+      - LOG_LEVEL=info
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./models:/app/models
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - copper-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis缓存 (可选)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - copper-network
+    command: redis-server --appendonly yes
+
+  # 任务调度服务
+  scheduler:
+    build: .
+    command: python main.py --scheduler
+    environment:
+      - DATA_SOURCE=auto
+      - SCHEDULER_MODE=background
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./models:/app/models
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - copper-network
+    depends_on:
+      - copper-api
+
+  # 监控 (可选)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployment/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - copper-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deployment/grafana-dashboards:/etc/grafana/provisioning/dashboards
+    restart: unless-stopped
+    networks:
+      - copper-network
+    depends_on:
+      - prometheus
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  copper-network:
+    driver: bridge

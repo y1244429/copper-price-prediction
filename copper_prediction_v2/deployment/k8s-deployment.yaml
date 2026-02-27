@@ -1,0 +1,120 @@
+# Kubernetes部署配置
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copper-api
+  labels:
+    app: copper-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: copper-api
+  template:
+    metadata:
+      labels:
+        app: copper-api
+    spec:
+      containers:
+      - name: copper-api
+        image: copper-prediction:v2
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATA_SOURCE
+          value: "auto"
+        - name: LOG_LEVEL
+          value: "info"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: models-volume
+          mountPath: /app/models
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: copper-data-pvc
+      - name: models-volume
+        persistentVolumeClaim:
+          claimName: copper-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: copper-api-service
+spec:
+  selector:
+    app: copper-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: copper-data-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: copper-models-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# 水平自动扩缩容
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: copper-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: copper-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

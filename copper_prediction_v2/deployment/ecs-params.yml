@@ -1,0 +1,57 @@
+# AWS ECS部署配置
+
+version: 1
+task_definition:
+  ecs_network_mode: awsvpc
+  task_execution_role: ecsTaskExecutionRole
+  task_size:
+    cpu_limit: 1024
+    mem_limit: 2048
+  
+  services:
+    copper-api:
+      essential: true
+      image: ${ECR_REPOSITORY}/copper-prediction:v2
+      ports:
+        - containerPort: 8000
+          hostPort: 8000
+          protocol: tcp
+      environment:
+        - name: DATA_SOURCE
+          value: auto
+        - name: LOG_LEVEL
+          value: info
+      log_configuration:
+        logDriver: awslogs
+        options:
+          awslogs-group: /ecs/copper-prediction
+          awslogs-region: ${AWS_REGION}
+          awslogs-stream-prefix: ecs
+      health_check:
+        command: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+        interval: 30
+        timeout: 5
+        retries: 3
+        start_period: 60
+
+run_params:
+  network_configuration:
+    awsvpc_configuration:
+      subnets:
+        - ${SUBNET_ID_1}
+        - ${SUBNET_ID_2}
+      security_groups:
+        - ${SECURITY_GROUP_ID}
+      assign_public_ip: ENABLED
+  
+  service_autoscaling:
+    enabled: true
+    min_count: 2
+    max_count: 10
+    policies:
+      - name: cpu-autoscaling
+        type: TargetTrackingScaling
+        target_value: 70.0
+        scale_out_cooldown: 60
+        scale_in_cooldown: 300
+        metric: ECSServiceAverageCPUUtilization
