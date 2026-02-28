@@ -22,6 +22,13 @@ from models.copper_model_v2 import (
 )
 from models.lstm_model import DeepLearningPredictor, TORCH_AVAILABLE
 from models.model_explainer import ModelExplainer
+from models.advanced_models import (
+    FundamentalModel, FundamentalConfig,
+    MacroFactorModel, MacroConfig
+)
+from models.model_validation import (
+    ModelValidator, WalkForwardConfig, StressTestConfig, RiskMetricsConfig
+)
 from data.data_sources import MockDataSource, AKShareDataSource, DataMerger
 from data.real_data import RealDataManager, get_data_source
 try:
@@ -89,6 +96,12 @@ class CopperPredictionSystem:
         # 模型
         self.xgb_model = None
         self.lstm_model = None
+        self.fundamental_model = None
+        self.macro_model = None
+
+        # 模型配置
+        self.fundamental_config = FundamentalConfig()
+        self.macro_config = MacroConfig()
 
         # 解释器
         self.explainer = None
@@ -233,6 +246,42 @@ class CopperPredictionSystem:
 
         return history
 
+    def train_fundamental(self) -> Dict:
+        """
+        训练基本面模型（长期趋势）
+        """
+        print("\n[模型训练] 基本面模型（长期趋势，6个月+）...")
+
+        if self.current_data is None:
+            self.load_data(days=365)
+
+        try:
+            model = FundamentalModel(self.fundamental_config)
+            metrics = model.train(self.current_data)
+            self.fundamental_model = model
+            return metrics
+        except Exception as e:
+            print(f"✗ 基本面模型训练失败: {e}")
+            return {}
+
+    def train_macro(self) -> Dict:
+        """
+        训练宏观因子模型（中期波动）
+        """
+        print("\n[模型训练] 宏观因子模型（中期波动，1-6个月）...")
+
+        if self.current_data is None:
+            self.load_data(days=365)
+
+        try:
+            model = MacroFactorModel(self.macro_config)
+            metrics = model.train(self.current_data)
+            self.macro_model = model
+            return metrics
+        except Exception as e:
+            print(f"✗ 宏观因子模型训练失败: {e}")
+            return {}
+
     def predict(self, horizon: int = 5, model_type: str = 'xgboost') -> Dict:
         """
         生成预测
@@ -364,9 +413,12 @@ class CopperPredictionSystem:
             self.scheduler.stop()
             print("调度器已停止")
 
-    def generate_report(self) -> str:
+    def generate_report(self, include_xgb=True) -> str:
         """
         生成完整分析报告
+
+        Args:
+            include_xgb: 是否包含XGBoost模型（用于单独运行宏观/基本面模型时）
         """
         print("\n[报告] 生成完整分析报告...")
 
@@ -383,9 +435,34 @@ class CopperPredictionSystem:
             'volatility_20d': close.pct_change().rolling(20).std().iloc[-1] * 100
         }
 
-        # 2. 预测
-        short_pred = self.predict(horizon=5)
-        medium_pred = self.predict(horizon=30)
+        # 2. 多模型预测
+        print("\n  生成多模型预测...")
+
+        # 短期预测（技术模型）- 只有在包含XGBoost时才生成
+        short_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+        medium_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+
+        if include_xgb and self.xgb_model:
+            short_pred = self.predict(horizon=5)
+            medium_pred = self.predict(horizon=30)
+
+        # 中期预测（宏观因子模型）
+        macro_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+        if self.macro_model:
+            try:
+                macro_pred = self.macro_model.predict(self.current_data, horizon=90)
+                print(f"    宏观因子模型 (90天): ¥{macro_pred['predicted_price']:,.2f} ({macro_pred['predicted_return']:+.2f}%)")
+            except Exception as e:
+                print(f"    宏观因子模型预测失败: {e}")
+
+        # 长期预测（基本面模型）
+        fundamental_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+        if self.fundamental_model:
+            try:
+                fundamental_pred = self.fundamental_model.predict(self.current_data, horizon=180)
+                print(f"    基本面模型 (180天): ¥{fundamental_pred['predicted_price']:,.2f} ({fundamental_pred['predicted_return']:+.2f}%)")
+            except Exception as e:
+                print(f"    基本面模型预测失败: {e}")
 
         # 3. 特征重要性
         if self.explainer:
@@ -402,10 +479,17 @@ class CopperPredictionSystem:
             'sharpe_ratio': 0.410
         }
 
+        # 5. 确定报告类型标题
+        model_type_title = "多模型综合分析"
+        if self.macro_model and not self.fundamental_model and not self.xgb_model:
+            model_type_title = "宏观因子模型分析（中期波动）"
+        elif self.fundamental_model and not self.macro_model and not self.xgb_model:
+            model_type_title = "基本面模型分析（长期趋势）"
+
         # 构建文本报告
         report = f"""
 {'='*60}
-铜价预测系统 v2 - 分析报告
+铜价预测系统 v2 - {model_type_title}报告
 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 {'='*60}
 
@@ -416,12 +500,31 @@ class CopperPredictionSystem:
 月涨跌: {stats['price_change_1m']:+.2f}%
 20日波动率: {stats['volatility_20d']:.2f}%
 
-【价格预测】
-短期 (5天): ¥{short_pred['predicted_price']:,.2f} ({short_pred['predicted_return']:+.2f}%)
-中期 (30天): ¥{medium_pred['predicted_price']:,.2f} ({medium_pred['predicted_return']:+.2f}%)
+【多模型价格预测】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+技术分析模型 (XGBoost)
+  短期 (5天): ¥{short_pred['predicted_price']:,.2f} ({short_pred['predicted_return']:+.2f}%)
+  中期 (30天): ¥{medium_pred['predicted_price']:,.2f} ({medium_pred['predicted_return']:+.2f}%)
+
+宏观因子模型 (中期波动，1-6个月)
+  核心驱动: 美元指数 | PMI | 实际利率 | LME升贴水
+  预测 (90天): ¥{macro_pred['predicted_price']:,.2f} ({macro_pred['predicted_return']:+.2f}%)
+
+基本面模型 (长期趋势，6个月+)
+  核心驱动: 供需平衡 | 成本支撑 | 矿山干扰
+  预测 (180天): ¥{fundamental_pred['predicted_price']:,.2f} ({fundamental_pred['predicted_return']:+.2f}%)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【关键因子】
 {chr(10).join([f'- {f}' for f in top_features])}
+
+【模型说明】
+• 技术分析模型: 基于价格、成交量等技术指标，适合短期交易
+• 宏观因子模型: 基于美元、PMI、利率等宏观因子，捕捉中期波动
+• 基本面模型: 基于供需、成本、矿山干扰等基本面数据，把握长期趋势
+
+【投资建议】
+短期: {'看涨' if short_pred['predicted_return'] > 0 else '看跌'} | 中期: {'看涨' if macro_pred['predicted_return'] > 0 else '看跌'} | 长期: {'看涨' if fundamental_pred['predicted_return'] > 0 else '看跌'}
 
 【风险提示】
 本报告由AI模型生成,仅供参考,不构成投资建议。
@@ -436,12 +539,16 @@ class CopperPredictionSystem:
         print(f"✓ 文本报告已保存: {report_file}")
 
         # 生成HTML报告
-        html_report_file = self._generate_html_report(stats, short_pred, medium_pred, top_features, model_metrics)
+        html_report_file = self._generate_html_report(
+            stats, short_pred, medium_pred, top_features, model_metrics,
+            macro_pred, fundamental_pred
+        )
         print(f"✓ HTML报告已保存: {html_report_file}")
 
         return report
 
-    def _generate_html_report(self, stats, short_pred, medium_pred, top_features, model_metrics) -> str:
+    def _generate_html_report(self, stats, short_pred, medium_pred, top_features, model_metrics,
+                             macro_pred=None, fundamental_pred=None) -> str:
         """生成HTML格式的报告"""
         from pathlib import Path
 
@@ -466,6 +573,21 @@ class CopperPredictionSystem:
         html_content = html_content.replace('{{ total_return }}', f"{model_metrics['total_return']:.4f}")
         html_content = html_content.replace('{{ sharpe_ratio }}', f"{model_metrics['sharpe_ratio']:.3f}")
 
+        # 添加多模型预测信息
+        if macro_pred:
+            html_content = html_content.replace('{{ macro_pred_price }}', f"{macro_pred['predicted_price']:,.2f}")
+            html_content = html_content.replace('{{ macro_pred_return }}', f"{macro_pred['predicted_return']:.2f}")
+        else:
+            html_content = html_content.replace('{{ macro_pred_price }}', "N/A")
+            html_content = html_content.replace('{{ macro_pred_return }}', "N/A")
+
+        if fundamental_pred:
+            html_content = html_content.replace('{{ fundamental_pred_price }}', f"{fundamental_pred['predicted_price']:,.2f}")
+            html_content = html_content.replace('{{ fundamental_pred_return }}', f"{fundamental_pred['predicted_return']:.2f}")
+        else:
+            html_content = html_content.replace('{{ fundamental_pred_price }}', "N/A")
+            html_content = html_content.replace('{{ fundamental_pred_return }}', "N/A")
+
         # 处理特征列表
         features_html = ''.join([f'                <div class="feature-item">{feature}</div>\n' for feature in top_features])
         html_content = html_content.replace(
@@ -480,9 +602,12 @@ class CopperPredictionSystem:
 
         return html_file
 
-    def generate_ppt_report(self) -> str:
+    def generate_ppt_report(self, include_xgb=True) -> str:
         """
         生成PPT格式的报告
+
+        Args:
+            include_xgb: 是否包含XGBoost模型
         """
         print("\n[PPT报告] 生成PowerPoint演示文稿...")
 
@@ -500,8 +625,27 @@ class CopperPredictionSystem:
         }
 
         # 2. 预测
-        short_pred = self.predict(horizon=5)
-        medium_pred = self.predict(horizon=30)
+        short_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+        medium_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+
+        if include_xgb and self.xgb_model:
+            short_pred = self.predict(horizon=5)
+            medium_pred = self.predict(horizon=30)
+
+        # 宏观和基本面预测
+        macro_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+        if self.macro_model:
+            try:
+                macro_pred = self.macro_model.predict(self.current_data, horizon=90)
+            except:
+                pass
+
+        fundamental_pred = {'predicted_price': stats['current_price'], 'predicted_return': 0}
+        if self.fundamental_model:
+            try:
+                fundamental_pred = self.fundamental_model.predict(self.current_data, horizon=180)
+            except:
+                pass
 
         # 3. 特征重要性
         if self.explainer:
@@ -521,19 +665,78 @@ class CopperPredictionSystem:
         # 导入PPT生成模块
         try:
             from generate_ppt import create_ppt_report
-            
+
             # 生成PPT
             ppt_file = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
-            create_ppt_report(stats, short_pred, medium_pred, top_features, 
-                           model_metrics, self.current_data, ppt_file)
-            
+            create_ppt_report(
+                stats, short_pred, medium_pred, top_features,
+                model_metrics, self.current_data, ppt_file,
+                macro_pred=macro_pred, fundamental_pred=fundamental_pred,
+                macro_model=self.macro_model, fundamental_model=self.fundamental_model
+            )
+
             print(f"✓ PPT报告已保存: {ppt_file}")
             return ppt_file
-            
+
         except ImportError:
             print("✗ python-pptx未安装,无法生成PPT")
             print("  安装命令: pip install python-pptx")
             return None
+
+    def validate_model(self, model_type: str = 'xgboost') -> Dict:
+        """
+        验证模型性能（滚动窗口回测 + 压力测试）
+        
+        Args:
+            model_type: 模型类型 ('xgboost', 'macro', 'fundamental')
+            
+        Returns:
+            验证结果
+        """
+        print("\n" + "="*60)
+        print("🔍 模型验证与风险管理")
+        print("="*60)
+        
+        if self.current_data is None:
+            self.load_data(days=365)
+        
+        # 选择要验证的模型
+        if model_type == 'xgboost' and self.xgb_model:
+            model = self.xgb_model
+            base_pred = self.current_data['close'].iloc[-1]
+        elif model_type == 'macro' and self.macro_model:
+            model = self.macro_model
+            base_pred = self.macro_model.predict(self.current_data, horizon=90)['predicted_price']
+        elif model_type == 'fundamental' and self.fundamental_model:
+            model = self.fundamental_model
+            base_pred = self.fundamental_model.predict(self.current_data, horizon=180)['predicted_price']
+        else:
+            print(f"✗ {model_type}模型未训练,无法验证")
+            return {}
+        
+        # 创建特征
+        features = self.feature_engineer.create_features(self.current_data)
+        
+        # 创建验证器
+        validator = ModelValidator()
+        
+        # 运行完整验证
+        results = validator.validate(
+            model,
+            self.current_data,
+            features,
+            target_col='close',
+            base_prediction=base_pred
+        )
+        
+        # 保存验证报告
+        report_file = f"validation_report_{model_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(report_file, 'w', encoding='utf-8') as f:
+            f.write(results.get('risk_report', ''))
+        
+        print(f"\n✓ 验证报告已保存: {report_file}")
+        
+        return results
 
     def get_realtime_price(self) -> Dict:
         """
@@ -557,35 +760,48 @@ class CopperPredictionSystem:
     def quick_demo(self):
         """快速演示完整流程"""
         print("\n" + "="*60)
-        print("🚀 快速演示 - 铜价预测系统 v2")
+        print("🚀 快速演示 - 铜价预测系统 v2 (多模型版本)")
         print("="*60)
 
         # 1. 加载数据
         self.load_data(days=365)
 
-        # 2. 训练模型
+        # 2. 训练技术模型
         try:
             self.train_xgboost()
         except Exception as e:
             print(f"XGBoost训练跳过: {e}")
 
-        # 3. 生成预测
+        # 3. 训练宏观因子模型
+        try:
+            self.train_macro()
+        except Exception as e:
+            print(f"宏观因子模型训练跳过: {e}")
+
+        # 4. 训练基本面模型
+        try:
+            self.train_fundamental()
+        except Exception as e:
+            print(f"基本面模型训练跳过: {e}")
+
+        # 5. 生成预测
+        print("\n[多模型预测]")
         self.predict(horizon=5)
         self.predict(horizon=30)
 
-        # 4. 解释预测
+        # 6. 解释预测
         try:
             self.explain_prediction()
         except:
             pass
 
-        # 5. 回测
+        # 7. 回测
         self.backtest()
 
-        # 6. 生成报告（文本 + HTML）
+        # 8. 生成报告（文本 + HTML）
         self.generate_report()
 
-        # 7. 生成PPT报告
+        # 9. 生成PPT报告
         try:
             self.generate_ppt_report()
         except Exception as e:
@@ -601,9 +817,16 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='铜价预测系统 v2')
-    parser.add_argument('--demo', action='store_true', help='运行完整演示')
+    parser.add_argument('--demo', action='store_true', help='运行完整演示（包括多模型）')
     parser.add_argument('--predict', action='store_true', help='生成预测')
     parser.add_argument('--train', action='store_true', help='训练模型')
+    parser.add_argument('--train-xgb', action='store_true', help='训练XGBoost模型')
+    parser.add_argument('--train-macro', action='store_true', help='训练宏观因子模型')
+    parser.add_argument('--train-fundamental', action='store_true', help='训练基本面模型')
+    parser.add_argument('--validate', action='store_true', help='验证模型（滚动窗口+压力测试）')
+    parser.add_argument('--validate-model', type=str, default='xgboost',
+                       choices=['xgboost', 'macro', 'fundamental'],
+                       help='要验证的模型类型')
     parser.add_argument('--backtest', action='store_true', help='运行回测')
     parser.add_argument('--report', action='store_true', help='生成报告')
     parser.add_argument('--scheduler', action='store_true', help='启动调度器')
@@ -624,6 +847,40 @@ if __name__ == '__main__':
     elif args.train:
         system.load_data()
         system.train_xgboost()
+        system.train_macro()
+        system.train_fundamental()
+    elif args.train_xgb:
+        system.load_data()
+        system.train_xgboost()
+    elif args.train_macro:
+        system.load_data()
+        system.train_macro()
+        # 生成报告和PPT（不包含XGBoost模型）
+        system.generate_report(include_xgb=False)
+        try:
+            system.generate_ppt_report(include_xgb=False)
+        except Exception as e:
+            print(f"PPT报告生成跳过: {e}")
+    elif args.train_fundamental:
+        system.load_data()
+        system.train_fundamental()
+        # 生成报告和PPT（不包含XGBoost模型）
+        system.generate_report(include_xgb=False)
+        try:
+            system.generate_ppt_report(include_xgb=False)
+        except Exception as e:
+            print(f"PPT报告生成跳过: {e}")
+    elif args.validate:
+        # 先训练模型
+        if args.validate_model == 'xgboost':
+            system.train_xgboost()
+        elif args.validate_model == 'macro':
+            system.train_macro()
+        elif args.validate_model == 'fundamental':
+            system.train_fundamental()
+        
+        # 运行验证
+        system.validate_model(args.validate_model)
     elif args.backtest:
         system.load_data()
         system.backtest()
