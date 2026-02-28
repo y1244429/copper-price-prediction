@@ -518,6 +518,40 @@ HTML_TEMPLATE = """
                 align-self: flex-start !important;
             }
 
+            #resultsSection {
+                padding: 20px 15px;
+            }
+            #resultsSection h3 {
+                font-size: 1.3em;
+            }
+            #multiModelResults > div {
+                grid-template-columns: 1fr !important;
+            }
+            #multiModelResults > div > div {
+                padding: 18px 15px;
+            }
+            #multiModelResults h4 {
+                font-size: 1.15em;
+            }
+            #multiModelResults .metric-value {
+                font-size: 1.6em;
+            }
+            #multiModelResults .metric-desc {
+                font-size: 0.8em;
+            }
+            #ensemblePrice, #ensembleChange {
+                font-size: 1.8em !important;
+            }
+            #ensembleDirection, #modelConsensus {
+                font-size: 1.5em !important;
+            }
+            #singleModelPrice {
+                font-size: 2em !important;
+            }
+            #singleModelChange {
+                font-size: 1.6em !important;
+            }
+
             .console {
                 font-size: 0.8em;
                 padding: 15px;
@@ -551,6 +585,22 @@ HTML_TEMPLATE = """
 
             .confidence-score {
                 font-size: 2.5em !important;
+            }
+
+            #resultsSection {
+                padding: 20px 15px;
+            }
+            #resultsSection h3 {
+                font-size: 1.2em;
+            }
+            #multiModelResults > div > div {
+                padding: 15px 12px;
+            }
+            #multiModelResults h4 {
+                font-size: 1.1em;
+            }
+            #multiModelResults .metric-value {
+                font-size: 1.3em;
             }
         }
     </style>
@@ -663,17 +713,20 @@ HTML_TEMPLATE = """
             <h3 style="margin: 30px 0 20px 0; color: #333; text-align: center;">选择预测模型</h3>
 
             <div class="buttons-grid">
-                <button class="run-button" id="runDemoButton" onclick="runPrediction('demo')">
-                    🚀 全部模型
-                    <div style="font-size: 0.7em; margin-top: 5px; opacity: 0.9;">技术 + 宏观 + 基本面</div>
+                <button class="run-button" id="runDemoButton">
+                    <span>🚀 全部模型</span>
+                    <br>
+                    <span style="font-size: 0.7em; opacity: 0.9;">技术 + 宏观 + 基本面</span>
                 </button>
-                <button class="run-button macro" id="runMacroButton" onclick="runPrediction('macro')">
-                    📊 宏观因子模型
-                    <div style="font-size: 0.7em; margin-top: 5px; opacity: 0.9;">中期波动（1-6个月）</div>
+                <button class="run-button macro" id="runMacroButton">
+                    <span>📊 宏观因子模型</span>
+                    <br>
+                    <span style="font-size: 0.7em; opacity: 0.9;">中期波动（1-6个月）</span>
                 </button>
-                <button class="run-button fundamental" id="runFundamentalButton" onclick="runPrediction('fundamental')">
-                    🏭 基本面模型
-                    <div style="font-size: 0.7em; margin-top: 5px; opacity: 0.9;">长期趋势（6个月+）</div>
+                <button class="run-button fundamental" id="runFundamentalButton">
+                    <span>🏭 基本面模型</span>
+                    <br>
+                    <span style="font-size: 0.7em; opacity: 0.9;">长期趋势（6个月+）</span>
                 </button>
             </div>
 
@@ -745,6 +798,116 @@ HTML_TEMPLATE = """
 
             <div class="console" id="consoleOutput"></div>
 
+            <!-- 预测结果展示 -->
+            <div id="resultsSection" style="margin-top: 30px; display: none;">
+                <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 30px; border-radius: 15px; border: 2px solid #0ea5e9;">
+                    <h3 style="color: #0284c7; margin: 0 0 25px 0; font-size: 1.4em; text-align: center;">📊 预测结果展示</h3>
+
+                    <!-- 多模型结果 -->
+                    <div id="multiModelResults" style="display: none;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 25px;">
+                            <!-- XGBoost结果 -->
+                            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                <h4 style="color: #667eea; margin: 0 0 15px 0; font-size: 1.2em; display: flex; align-items: center;">
+                                    <span style="margin-right: 8px;">📈</span>XGBoost技术模型
+                                </h4>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测价格：</span>
+                                    <span style="font-size: 1.5em; font-weight: bold; color: #333;" id="xgboostPrice">--</span>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">涨跌幅：</span>
+                                    <span style="font-size: 1.3em; font-weight: bold;" id="xgboostChange">--</span>
+                                </div>
+                                <div style="padding: 10px; background: #f0f4ff; border-radius: 8px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测周期：</span>
+                                    <span style="color: #667eea; font-weight: 500;" id="xgboostPeriod">短期（5天）</span>
+                                </div>
+                            </div>
+
+                            <!-- ARDL宏观模型 -->
+                            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 5px solid #f5576c; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                <h4 style="color: #f5576c; margin: 0 0 15px 0; font-size: 1.2em; display: flex; align-items: center;">
+                                    <span style="margin-right: 8px;">📊</span>ARDL宏观模型
+                                </h4>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测价格：</span>
+                                    <span style="font-size: 1.5em; font-weight: bold; color: #333;" id="macroPrice">--</span>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">涨跌幅：</span>
+                                    <span style="font-size: 1.3em; font-weight: bold;" id="macroChange">--</span>
+                                </div>
+                                <div style="padding: 10px; background: #fff0f3; border-radius: 8px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测周期：</span>
+                                    <span style="color: #f5576c; font-weight: 500;" id="macroPeriod">中期（1-6个月）</span>
+                                </div>
+                            </div>
+
+                            <!-- VAR基本面模型 -->
+                            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 5px solid #00f2fe; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                <h4 style="color: #0099cc; margin: 0 0 15px 0; font-size: 1.2em; display: flex; align-items: center;">
+                                    <span style="margin-right: 8px;">🏭</span>VAR基本面模型
+                                </h4>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测价格：</span>
+                                    <span style="font-size: 1.5em; font-weight: bold; color: #333;" id="fundamentalPrice">--</span>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">涨跌幅：</span>
+                                    <span style="font-size: 1.3em; font-weight: bold;" id="fundamentalChange">--</span>
+                                </div>
+                                <div style="padding: 10px; background: #e0f7fa; border-radius: 8px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测周期：</span>
+                                    <span style="color: #0099cc; font-weight: 500;" id="fundamentalPeriod">长期（6个月+）</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 综合预测 -->
+                        <div style="background: white; padding: 25px; border-radius: 12px; border: 2px solid #16a34a; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                            <h4 style="color: #16a34a; margin: 0 0 20px 0; font-size: 1.3em; text-align: center;">🎯 多模型综合预测</h4>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; text-align: center;">
+                                <div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">综合预测价格</div>
+                                    <div style="font-size: 2.2em; font-weight: bold; color: #16a34a;" id="ensemblePrice">--</div>
+                                </div>
+                                <div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">综合涨跌幅</div>
+                                    <div style="font-size: 2.2em; font-weight: bold;" id="ensembleChange">--</div>
+                                </div>
+                                <div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">预测方向</div>
+                                    <div style="font-size: 1.8em; font-weight: bold; color: #16a34a;" id="ensembleDirection">--</div>
+                                </div>
+                                <div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">模型一致性</div>
+                                    <div style="font-size: 1.8em; font-weight: bold;" id="modelConsensus">--</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 单模型结果 -->
+                    <div id="singleModelResults" style="display: none;">
+                        <div style="background: white; padding: 30px; border-radius: 12px; border: 2px solid #667eea; text-align: center;">
+                            <h4 style="color: #667eea; margin: 0 0 20px 0; font-size: 1.5em;" id="singleModelTitle">模型预测结果</h4>
+                            <div style="margin-bottom: 20px;">
+                                <span style="color: #666; font-size: 1.1em;">预测价格：</span>
+                                <span style="font-size: 2.5em; font-weight: bold; color: #333;" id="singleModelPrice">--</span>
+                            </div>
+                            <div style="margin-bottom: 20px;">
+                                <span style="color: #666; font-size: 1.1em;">涨跌幅：</span>
+                                <span style="font-size: 2em; font-weight: bold;" id="singleModelChange">--</span>
+                            </div>
+                            <div style="display: inline-block; padding: 12px 25px; background: #f0f4ff; border-radius: 8px;">
+                                <span style="color: #667eea; font-size: 1.1em; font-weight: 500;" id="singleModelPeriod">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 报告下载区域 -->
             <div id="reportsSection" style="margin-top: 30px; display: none;">
                 <div style="background: #f8f9fa; padding: 25px; border-radius: 15px; border-left: 4px solid #16a34a;">
@@ -770,7 +933,48 @@ HTML_TEMPLATE = """
             selectedDataSource = dataSource;
         }
 
+        // 页面加载完成后添加事件监听器
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('页面加载完成');
+
+            // 为按钮添加额外的点击事件监听
+            const runDemoButton = document.getElementById('runDemoButton');
+            const runMacroButton = document.getElementById('runMacroButton');
+            const runFundamentalButton = document.getElementById('runFundamentalButton');
+
+            if (runDemoButton) {
+                console.log('找到 runDemoButton');
+                runDemoButton.addEventListener('click', function(e) {
+                    console.log('全部模型按钮被点击');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    runPrediction('demo');
+                });
+            }
+
+            if (runMacroButton) {
+                console.log('找到 runMacroButton');
+                runMacroButton.addEventListener('click', function(e) {
+                    console.log('宏观因子模型按钮被点击');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    runPrediction('macro');
+                });
+            }
+
+            if (runFundamentalButton) {
+                console.log('找到 runFundamentalButton');
+                runFundamentalButton.addEventListener('click', function(e) {
+                    console.log('基本面模型按钮被点击');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    runPrediction('fundamental');
+                });
+            }
+        });
+
         async function runPrediction(modelType = 'demo') {
+            console.log('runPrediction 被调用，modelType:', modelType);
             const buttons = document.querySelectorAll('.run-button');
             const statusMessage = document.getElementById('statusMessage');
             const consoleOutput = document.getElementById('consoleOutput');
@@ -845,6 +1049,9 @@ HTML_TEMPLATE = """
 
                 // 加载并显示报告列表
                 await loadReports();
+
+                // 显示预测结果
+                await displayPredictionResults(modelType);
 
                 // 如果运行了验证，显示置信度面板
                 if (runValidation) {
@@ -936,6 +1143,187 @@ HTML_TEMPLATE = """
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // 显示预测结果
+        async function displayPredictionResults(modelType) {
+            try {
+                const response = await fetch('/reports');
+                const reports = await response.json();
+
+                // 查找最新的文本报告
+                const txtReports = reports.filter(r => r.type === 'txt');
+                if (txtReports.length === 0) {
+                    return;
+                }
+
+                // 读取最新的报告文件
+                const latestReport = txtReports[0];
+                const reportResponse = await fetch(`/view/${latestReport.name}`);
+                const reportText = await reportResponse.text();
+
+                // 解析预测结果
+                const results = parsePredictionResults(reportText);
+
+                // 显示结果区域
+                const resultsSection = document.getElementById('resultsSection');
+                resultsSection.style.display = 'block';
+
+                if (modelType === 'demo' || modelType === 'xgboost') {
+                    // 多模型结果
+                    document.getElementById('multiModelResults').style.display = 'block';
+                    document.getElementById('singleModelResults').style.display = 'none';
+
+                    // XGBoost
+                    if (results.xgboost) {
+                        updateModelResult('xgboost', results.xgboost);
+                    }
+                    // ARDL
+                    if (results.macro) {
+                        updateModelResult('macro', results.macro);
+                    }
+                    // VAR
+                    if (results.fundamental) {
+                        updateModelResult('fundamental', results.fundamental);
+                    }
+
+                    // 综合预测
+                    if (results.ensemble) {
+                        updateEnsembleResult(results.ensemble);
+                    }
+                } else {
+                    // 单模型结果
+                    document.getElementById('multiModelResults').style.display = 'none';
+                    document.getElementById('singleModelResults').style.display = 'block';
+
+                    const modelKey = modelType === 'macro' ? 'macro' : 'fundamental';
+                    if (results[modelKey]) {
+                        updateSingleModelResult(modelType, results[modelKey]);
+                    }
+                }
+
+                // 滚动到结果区域
+                resultsSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            } catch (error) {
+                console.error('显示预测结果失败:', error);
+            }
+        }
+
+        // 解析预测结果
+        function parsePredictionResults(reportText) {
+            const results = {
+                xgboost: null,
+                macro: null,
+                fundamental: null,
+                ensemble: null
+            };
+
+            // 使用正则表达式提取预测结果
+            // XGBoost预测
+            const xgboostMatch = reportText.match(/技术分析模型 \(XGBoost\)[\s\S]*?短期 \(5天\): ¥([\d,.]+)/);
+            if (xgboostMatch) {
+                const xgboostLine = reportText.match(/技术分析模型 \(XGBoost\)[\s\S]*?短期 \(5天\): ¥([\d,.]+) \(([+-][\d.]+)%\)/);
+                if (xgboostLine) {
+                    results.xgboost = {
+                        price: parseFloat(xgboostLine[1].replace(/,/g, '')),
+                        change: parseFloat(xgboostLine[2])
+                    };
+                }
+            }
+
+            // ARDL宏观预测
+            const macroMatch = reportText.match(/宏观因子模型[\s\S]*?预测 \(90天\): ¥([\d,.]+) \(([+-][\d.]+)%\)/);
+            if (macroMatch) {
+                results.macro = {
+                    price: parseFloat(macroMatch[1].replace(/,/g, '')),
+                    change: parseFloat(macroMatch[2])
+                };
+            }
+
+            // VAR基本面预测
+            const fundamentalMatch = reportText.match(/基本面模型[\s\S]*?预测 \(180天\): ¥([\d,.]+) \(([+-][\d.]+)%\)/);
+            if (fundamentalMatch) {
+                results.fundamental = {
+                    price: parseFloat(fundamentalMatch[1].replace(/,/g, '')),
+                    change: parseFloat(fundamentalMatch[2])
+                };
+            }
+
+            // 综合预测（计算平均值）
+            if (results.xgboost && results.macro && results.fundamental) {
+                const avgPrice = (results.xgboost.price + results.macro.price + results.fundamental.price) / 3;
+                const avgChange = (results.xgboost.change + results.macro.change + results.fundamental.change) / 3;
+
+                // 计算一致性（三个模型方向是否一致）
+                const directions = [
+                    results.xgboost.change >= 0 ? 1 : -1,
+                    results.macro.change >= 0 ? 1 : -1,
+                    results.fundamental.change >= 0 ? 1 : -1
+                ];
+                const sameDirection = directions.every(d => d === directions[0]);
+                const consensus = sameDirection ? '高度一致' : '存在分歧';
+
+                results.ensemble = {
+                    price: avgPrice,
+                    change: avgChange,
+                    direction: avgChange >= 0 ? '看涨' : '看跌',
+                    consensus: consensus
+                };
+            }
+
+            return results;
+        }
+
+        // 更新单模型结果
+        function updateModelResult(modelPrefix, data) {
+            const priceEl = document.getElementById(`${modelPrefix}Price`);
+            const changeEl = document.getElementById(`${modelPrefix}Change`);
+
+            if (priceEl) {
+                priceEl.textContent = `¥${data.price.toLocaleString()}`;
+            }
+
+            if (changeEl) {
+                const change = data.change;
+                changeEl.textContent = `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
+                changeEl.style.color = change > 0 ? '#16a34a' : change < 0 ? '#dc2626' : '#666';
+            }
+        }
+
+        // 更新综合预测结果
+        function updateEnsembleResult(data) {
+            document.getElementById('ensemblePrice').textContent = `¥${data.price.toLocaleString()}`;
+
+            const changeEl = document.getElementById('ensembleChange');
+            const change = data.change;
+            changeEl.textContent = `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
+            changeEl.style.color = change > 0 ? '#16a34a' : change < 0 ? '#dc2626' : '#666';
+
+            document.getElementById('ensembleDirection').textContent = data.direction;
+            document.getElementById('modelConsensus').textContent = data.consensus;
+        }
+
+        // 更新单模型预测结果
+        function updateSingleModelResult(modelType, data) {
+            const titleMap = {
+                'macro': '宏观因子模型预测结果',
+                'fundamental': '基本面模型预测结果'
+            };
+            const periodMap = {
+                'macro': '中期波动（1-6个月）',
+                'fundamental': '长期趋势（6个月+）'
+            };
+
+            document.getElementById('singleModelTitle').textContent = titleMap[modelType];
+            document.getElementById('singleModelPrice').textContent = `¥${data.price.toLocaleString()}`;
+
+            const changeEl = document.getElementById('singleModelChange');
+            const change = data.change;
+            changeEl.textContent = `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
+            changeEl.style.color = change > 0 ? '#16a34a' : change < 0 ? '#dc2626' : '#666';
+
+            document.getElementById('singleModelPeriod').textContent = periodMap[modelType];
         }
 
         // 显示置信度面板
