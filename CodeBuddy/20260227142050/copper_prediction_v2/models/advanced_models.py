@@ -524,8 +524,9 @@ class FundamentalModel:
         X = df_model.values
         X_scaled = self.scaler.transform(X)
 
-        # 获取最新数据
+        # 获取最新数据和特征值
         X_latest = X_scaled[-1:]
+        latest_features = df_model.iloc[-1].to_dict()
 
         # 预测
         if self.config.model_type == 'var' and STATSMODELS_AVAILABLE and hasattr(self.model, 'forecast'):
@@ -548,6 +549,19 @@ class FundamentalModel:
         predicted_price = current_price + predicted_change
         predicted_return = predicted_change / current_price
 
+        # 提取关键指标数值
+        key_indicators = {}
+        if 'production_growth' in latest_features:
+            key_indicators['产量增长率'] = latest_features['production_growth'] * 100
+        if 'consumption_growth' in latest_features:
+            key_indicators['消费增长率'] = latest_features['consumption_growth'] * 100
+        if 'inventory_change' in latest_features:
+            key_indicators['库存变化率'] = latest_features['inventory_change'] * 100
+        if 'cost_support' in latest_features:
+            key_indicators['成本支撑价'] = latest_features['cost_support']
+        if 'disruption_index' in latest_features:
+            key_indicators['供应干扰指数'] = latest_features['disruption_index'] * 100
+
         return {
             'model_type': 'fundamental',
             'current_price': current_price,
@@ -555,7 +569,9 @@ class FundamentalModel:
             'predicted_return': predicted_return * 100,
             'horizon_days': horizon,
             'trend': '上涨' if predicted_return > 0 else '下跌',
-            'confidence': '高'  # 基本面模型信心较高
+            'confidence': '高',  # 基本面模型信心较高
+            'key_indicators': key_indicators,
+            'feature_count': len(feature_cols)
         }
 
 
@@ -732,6 +748,9 @@ class MacroFactorModel:
 
         X = np.hstack(lagged_features)
 
+        # 获取最新特征值
+        latest_features = df_model.iloc[-1].to_dict()
+
         # 处理可能的NaN值
         X = np.nan_to_num(X, nan=0.0)
 
@@ -745,6 +764,21 @@ class MacroFactorModel:
         predicted_change = predicted_price - current_price
         predicted_return = predicted_change / current_price
 
+        # 提取关键指标数值
+        key_indicators = {}
+        if 'usd_index' in latest_features:
+            key_indicators['美元指数'] = latest_features['usd_index']
+        if 'pmi' in latest_features:
+            key_indicators['中国PMI'] = latest_features['pmi']
+        if 'real_interest_rate' in latest_features:
+            key_indicators['实际利率(%)'] = latest_features['real_interest_rate'] * 100
+        if 'lme_spread' in latest_features:
+            key_indicators['LME升贴水'] = latest_features['lme_spread']
+        if 'credit_pulse' in latest_features:
+            key_indicators['信贷脉冲'] = latest_features['credit_pulse'] * 100
+        if 'spread_pct' in latest_features:
+            key_indicators['升贴水占比(%)'] = latest_features['spread_pct']
+
         return {
             'model_type': 'macro',
             'current_price': current_price,
@@ -752,7 +786,9 @@ class MacroFactorModel:
             'predicted_return': predicted_return * 100,
             'horizon_days': horizon,
             'trend': '上涨' if predicted_return > 0 else '下跌',
-            'confidence': '中'
+            'confidence': '中',
+            'key_indicators': key_indicators,
+            'feature_count': len(feature_cols)
         }
 
 

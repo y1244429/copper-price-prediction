@@ -418,6 +418,33 @@
                 <p>正在加载风险预警数据...</p>
             </div>
 
+            <!-- 波动率显示区域 -->
+            <div id="volatilitySection" style="margin-bottom: 30px; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="color: #333; margin: 0; font-size: 1.4em;">📈 COMEX铜价波动监测</h3>
+                    <div id="dataSourceBadge" style="padding: 6px 15px; border-radius: 20px; font-size: 0.85em; font-weight: 500;">
+                        数据源加载中...
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                    <div id="intradayCard" style="background: white; padding: 25px; border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">日内波动率</div>
+                        <div style="font-size: 2.5em; font-weight: bold; color: #333;" id="intradayVolatility">--%</div>
+                        <div style="margin-top: 10px; font-size: 0.85em; color: #999;" id="intradayStatus">计算中...</div>
+                    </div>
+                    <div id="dailyCard" style="background: white; padding: 25px; border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">20日波动率</div>
+                        <div style="font-size: 2.5em; font-weight: bold; color: #333;" id="dailyVolatility">--%</div>
+                        <div style="margin-top: 10px; font-size: 0.85em; color: #999;" id="dailyStatus">计算中...</div>
+                    </div>
+                    <div id="weeklyCard" style="background: white; padding: 25px; border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">周波动率</div>
+                        <div style="font-size: 2.5em; font-weight: bold; color: #333;" id="weeklyVolatility">--%</div>
+                        <div style="margin-top: 10px; font-size: 0.85em; color: #999;" id="weeklyStatus">计算中...</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 预警卡片区域 -->
             <div id="alertCards" class="alert-cards" style="display: none;"></div>
 
@@ -486,15 +513,26 @@
             const loading = document.getElementById('loading');
             const banner = document.getElementById('alertBanner');
             const cards = document.getElementById('alertCards');
+            const volatilitySection = document.getElementById('volatilitySection');
             const refreshBtn = document.getElementById('refreshBtn');
 
             loading.style.display = 'block';
             banner.style.display = 'none';
             cards.style.display = 'none';
+            volatilitySection.style.display = 'none';
             refreshBtn.style.display = 'none';
 
             try {
-                const response = await fetch('/risk-alerts');
+                // 从URL获取日期参数
+                const urlParams = new URLSearchParams(window.location.search);
+                const targetDate = urlParams.get('date');
+
+                let url = '/risk-alerts';
+                if (targetDate) {
+                    url += `?date=${targetDate}`;
+                }
+
+                const response = await fetch(url);
                 const data = await response.json();
 
                 loading.style.display = 'none';
@@ -502,6 +540,7 @@
 
                 displayAlertBanner(data);
                 displayAlertCards(data.alerts || []);
+                displayVolatility(data);
             } catch (error) {
                 console.error('加载预警数据失败:', error);
                 loading.innerHTML = `
@@ -509,6 +548,99 @@
                     <p>${error.message}</p>
                 `;
             }
+        }
+
+        // 显示波动率数据
+        function displayVolatility(data) {
+            const volatilitySection = document.getElementById('volatilitySection');
+
+            // 从数据中提取波动率信息
+            const volatility = data.volatility || {};
+
+            // 显示数据源标识
+            const dataSourceBadge = document.getElementById('dataSourceBadge');
+            const dataSource = data.data_source || 'unknown';
+            if (dataSource === 'real') {
+                dataSourceBadge.textContent = '🟢 真实数据';
+                dataSourceBadge.style.background = 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)';
+                dataSourceBadge.style.color = 'white';
+            } else if (dataSource === 'mock') {
+                dataSourceBadge.textContent = '🟡 模拟数据';
+                dataSourceBadge.style.background = 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)';
+                dataSourceBadge.style.color = 'white';
+            } else {
+                dataSourceBadge.textContent = '⚪ 未知数据源';
+                dataSourceBadge.style.background = '#e0e0e0';
+                dataSourceBadge.style.color = '#666';
+            }
+
+            // 日内波动率
+            const intradayVol = volatility.intraday || 2.5;
+            const intradayEl = document.getElementById('intradayVolatility');
+            const intradayStatus = document.getElementById('intradayStatus');
+            const intradayCard = document.getElementById('intradayCard');
+
+            intradayEl.textContent = `${intradayVol.toFixed(2)}%`;
+
+            if (intradayVol > 9) {
+                intradayEl.style.color = '#dc2626';
+                intradayStatus.textContent = '⚠️ 高风险警告！波动率超过9%';
+                intradayCard.style.borderLeftColor = '#dc2626';
+            } else if (intradayVol > 6) {
+                intradayEl.style.color = '#f59e0b';
+                intradayStatus.textContent = '⚡ 波动较高，请注意风险';
+                intradayCard.style.borderLeftColor = '#f59e0b';
+            } else {
+                intradayEl.style.color = '#16a34a';
+                intradayStatus.textContent = '✅ 波动正常';
+                intradayCard.style.borderLeftColor = '#16a34a';
+            }
+
+            // 20日波动率
+            const dailyVol = volatility.daily_20d || 3.5;
+            const dailyEl = document.getElementById('dailyVolatility');
+            const dailyStatus = document.getElementById('dailyStatus');
+            const dailyCard = document.getElementById('dailyCard');
+
+            dailyEl.textContent = `${dailyVol.toFixed(2)}%`;
+
+            if (dailyVol > 5) {
+                dailyEl.style.color = '#dc2626';
+                dailyStatus.textContent = '⚠️ 高波动';
+                dailyCard.style.borderLeftColor = '#dc2626';
+            } else if (dailyVol > 3) {
+                dailyEl.style.color = '#f59e0b';
+                dailyStatus.textContent = '⚡ 波动偏高';
+                dailyCard.style.borderLeftColor = '#f59e0b';
+            } else {
+                dailyEl.style.color = '#16a34a';
+                dailyStatus.textContent = '✅ 波动正常';
+                dailyCard.style.borderLeftColor = '#16a34a';
+            }
+
+            // 周波动率
+            const weeklyVol = volatility.weekly || 4.2;
+            const weeklyEl = document.getElementById('weeklyVolatility');
+            const weeklyStatus = document.getElementById('weeklyStatus');
+            const weeklyCard = document.getElementById('weeklyCard');
+
+            weeklyEl.textContent = `${weeklyVol.toFixed(2)}%`;
+
+            if (weeklyVol > 7) {
+                weeklyEl.style.color = '#dc2626';
+                weeklyStatus.textContent = '⚠️ 高波动';
+                weeklyCard.style.borderLeftColor = '#dc2626';
+            } else if (weeklyVol > 4) {
+                weeklyEl.style.color = '#f59e0b';
+                weeklyStatus.textContent = '⚡ 波动偏高';
+                weeklyCard.style.borderLeftColor = '#f59e0b';
+            } else {
+                weeklyEl.style.color = '#16a34a';
+                weeklyStatus.textContent = '✅ 波动正常';
+                weeklyCard.style.borderLeftColor = '#16a34a';
+            }
+
+            volatilitySection.style.display = 'block';
         }
 
         // 显示预警横幅

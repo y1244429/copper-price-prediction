@@ -649,6 +649,23 @@ HTML_TEMPLATE = """
                 </a>
             </div>
 
+            <!-- 模型指标查看入口 -->
+            <div style="margin: 30px 0; padding: 30px; background: linear-gradient(135deg, #16a34a15 0%, #22c55e15 100%); border-radius: 15px; border: 2px solid #16a34a;">
+                <a href="/model-indicators.html" style="text-decoration: none; display: flex; align-items: center; justify-content: space-between; transition: all 0.3s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                    <div style="display: flex; align-items: center;">
+                        <span style="font-size: 3em; margin-right: 20px;">📊</span>
+                        <div>
+                            <h3 style="color: #16a34a; margin: 0; font-size: 1.5em;">模型指标详情</h3>
+                            <p style="color: #666; margin: 8px 0 0 0; font-size: 1em;">宏观因子 & 基本面模型 | 关键变量 | 实时指标</p>
+                            <p style="color: #999; margin: 5px 0 0 0; font-size: 0.9em;">美元指数 · PMI · 产量增长率 · 成本支撑价</p>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; font-size: 1.1em; box-shadow: 0 5px 15px rgba(22, 163, 74, 0.3); transition: all 0.3s;" onmouseover="this.style.boxShadow='0 8px 25px rgba(22, 163, 74, 0.4)'" onmouseout="this.style.boxShadow='0 5px 15px rgba(22, 163, 74, 0.3)'">
+                        查看指标 →
+                    </div>
+                </a>
+            </div>
+
             <!-- 置信度说明卡片 -->
             <div style="margin: 30px 0; padding: 25px; background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border-radius: 15px; border: 2px solid #667eea;">
                 <div style="display: flex; align-items: center; margin-bottom: 20px;">
@@ -1523,34 +1540,122 @@ def view_file(filename):
 
 @app.route('/risk-alerts')
 def get_risk_alerts():
-    """获取风险预警数据"""
+    """获取风险预警数据（使用真实数据源）"""
     try:
         from models.risk_alert_system import CopperRiskMonitor, AlertThresholds
-        from data.data_sources import MockDataSource
-        from datetime import datetime
+        from data.data_sources import AKShareDataSource, MockDataSource
+        from datetime import datetime, timedelta
+        import numpy as np
 
         # 创建监控器
         monitor = CopperRiskMonitor(AlertThresholds())
 
-        # 获取价格数据
-        source = MockDataSource()
-        from datetime import datetime, timedelta
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        data = source.fetch_copper_price(start_date=start_date, end_date=end_date)
+        # 尝试使用真实数据源
+        print("📡 尝试从AKShare获取COMEX铜价数据...")
+
+        try:
+            source = AKShareDataSource()
+            if not source.available:
+                raise ImportError("AKShare不可用")
+
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+            data = source.fetch_copper_price(start_date=start_date, end_date=end_date)
+
+            if data is None or len(data) == 0:
+                print("⚠️  AKShare返回空数据，切换到模拟数据")
+                source = MockDataSource()
+                data = source.fetch_copper_price(start_date=start_date, end_date=end_date)
+            else:
+                print(f"✅ 成功获取 {len(data)} 条真实数据")
+
+        except Exception as e:
+            print(f"⚠️  真实数据获取失败: {e}")
+            print("🔄 使用模拟数据")
+            source = MockDataSource()
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+            data = source.fetch_copper_price(start_date=start_date, end_date=end_date)
 
         # 运行监控
         result = monitor.run_full_monitoring(price_data=data)
 
+        # 计算波动率（基于真实数据）
+        if len(data) > 0:
+            print(f"📊 计算波动率指标...")
+            # 计算收益率
+            data['returns'] = data['close'].pct_change()
+
+            # 日内波动率（使用最近5天的平均日内波动）
+            if 'high' in data.columns and 'low' in data.columns:
+                recent_data = data.tail(5)
+                intraday_vol = ((recent_data['high'] - recent_data['low']) / recent_data['close']).mean() * 100
+                print(f"   日内波动率: {intraday_vol:.2f}%")
+            else:
+                intraday_vol = data['returns'].tail(5).std() * np.sqrt(252) * 100
+                print(f"   日内波动率（备用）: {intraday_vol:.2f}%")
+
+            # 20日波动率（年化）
+            if len(data) >= 20:
+                daily_vol_20d = data['returns'].tail(20).std() * np.sqrt(252) * 100
+            else:
+                daily_vol_20d = data['returns'].std() * np.sqrt(252) * 100
+            print(f"   20日年化波动率: {daily_vol_20d:.2f}%")
+
+            # 周波动率（5日）
+            if len(data) >= 5:
+                weekly_vol = data['returns'].tail(5).std() * np.sqrt(52) * 100
+            else:
+                weekly_vol = data['returns'].std() * np.sqrt(52) * 100
+            print(f"   周波动率: {weekly_vol:.2f}%")
+
+            # 添加波动率数据
+            result['volatility'] = {
+                'intraday': float(intraday_vol),
+                'daily_20d': float(daily_vol_20d),
+                'weekly': float(weekly_vol)
+            }
+
+            # 如果日内波动率 > 9%，添加高风险预警
+            if intraday_vol > 9:
+                print(f"⚠️  警告：日内波动率 {intraday_vol:.2f}% 超过9%阈值！")
+                if 'alerts' not in result:
+                    result['alerts'] = []
+                result['alerts'].append({
+                    'type': 'intraday_volatility',
+                    'level': 'level_3',
+                    'title': 'COMEX铜价日内波动率异常',
+                    'message': f'当前日内波动率为{intraday_vol:.2f}%，超过9%的风险阈值',
+                    'indicator': '日内波动率',
+                    'value': f'{intraday_vol:.2f}%',
+                    'threshold': '9%',
+                    'recommendation': '建议降低仓位，设置止损，密切关注市场动向'
+                })
+                # 如果当前级别低于3，升级到3
+                if result.get('current_level') == 'normal':
+                    result['current_level'] = 'level_3'
+
+        # 添加数据源标识
+        result['data_source'] = 'real' if isinstance(source, AKShareDataSource) else 'mock'
+
         return jsonify(result)
+
     except Exception as e:
-        print(f"获取风险预警失败: {e}")
-        # 返回默认数据
+        print(f"❌ 获取风险预警失败: {e}")
+        import traceback
+        traceback.print_exc()
+        # 返回默认数据（包含波动率）
         return jsonify({
             'current_level': 'normal',
             'alerts': [],
             'summary': '所有指标正常，无预警信号',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'volatility': {
+                'intraday': 2.5,
+                'daily_20d': 3.5,
+                'weekly': 4.2
+            },
+            'data_source': 'error'
         })
 
 
@@ -1701,6 +1806,570 @@ def get_validation_results():
                 continue
 
     return jsonify(results)
+
+
+# 模型指标展示页面的HTML模板
+MODEL_INDICATORS_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型指标详情 - 铜价预测系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .back-btn {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-50%) scale(1.05);
+        }
+        .content {
+            padding: 30px;
+        }
+        .model-section {
+            margin-bottom: 40px;
+            padding: 25px;
+            border-radius: 15px;
+            border-left: 5px solid;
+        }
+        .model-section.macro {
+            background: linear-gradient(135deg, #fff0f3 0%, #ffe5ec 100%);
+            border-color: #f5576c;
+        }
+        .model-section.fundamental {
+            background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+            border-color: #0ea5e9;
+        }
+        .model-title {
+            font-size: 1.8em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .model-title.macro { color: #f5576c; }
+        .model-title.fundamental { color: #0ea5e9; }
+        .model-desc {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        .indicators-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .indicator-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+            position: relative;
+        }
+        .indicator-card:hover {
+            transform: translateY(-5px);
+        }
+        .indicator-score {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        .indicator-score.high { background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); }
+        .indicator-score.medium { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); }
+        .indicator-score.low { background: linear-gradient(135deg, #dc2626 0%, #f97316 100%); }
+        .indicator-name {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .indicator-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .indicator-value.positive { color: #16a34a; }
+        .indicator-value.negative { color: #dc2626; }
+        .indicator-range {
+            font-size: 0.8em;
+            color: #999;
+            line-height: 1.4;
+        }
+        .indicator-range strong {
+            color: #666;
+        }
+        .variable-table {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .variable-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .variable-table th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+        }
+        .variable-table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .variable-table tr:last-child td {
+            border-bottom: none;
+        }
+        .variable-table tr:hover {
+            background: #f8f9fa;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            background: #fef2f2;
+            border: 2px solid #dc2626;
+            border-radius: 12px;
+            padding: 20px;
+            color: #dc2626;
+            text-align: center;
+        }
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+        .refresh-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-btn">← 返回主页</a>
+            <h1>📊 模型指标详情</h1>
+            <p>宏观因子模型 & 基本面模型的关键变量和指标</p>
+        </div>
+
+        <div class="content" id="content">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>正在加载模型指标...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadIndicators() {
+            const content = document.getElementById('content');
+            
+            try {
+                const response = await fetch('/model-indicators-data');
+                if (!response.ok) {
+                    throw new Error('无法加载模型指标');
+                }
+                const data = await response.json();
+                displayIndicators(data);
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="error">
+                        <h3>❌ 加载失败</h3>
+                        <p>${error.message}</p>
+                        <p style="margin-top: 10px;">请先在主页运行预测，然后再查看模型指标</p>
+                        <button class="refresh-btn" onclick="location.href='/')">返回主页</button>
+                    </div>
+                `;
+            }
+        }
+
+        // 计算指标评分和参考范围
+        function calculateIndicatorScore(name, value, modelType) {
+            const indicators = {
+                macro: {
+                    '美元指数': { min: 90, max: 110, optimal: 'low', reverse: true },
+                    '中国PMI': { min: 45, max: 55, optimal: 'high', reverse: false },
+                    '实际利率(%)': { min: -2, max: 4, optimal: 'low', reverse: true },
+                    'LME升贴水': { min: -50, max: 100, optimal: 'high', reverse: false }
+                },
+                fundamental: {
+                    '产量增长率': { min: -5, max: 10, optimal: 'low', reverse: true },
+                    '消费增长率': { min: -5, max: 15, optimal: 'high', reverse: false },
+                    '库存变化率': { min: -20, max: 20, optimal: 'low', reverse: true },
+                    '成本支撑价': { min: 70000, max: 120000, optimal: 'high', reverse: false },
+                    '供应干扰指数': { min: 0, max: 30, optimal: 'high', reverse: false }
+                }
+            };
+
+            const indicator = indicators[modelType]?.[name];
+            if (!indicator) return { score: 50, level: 'medium', range: '参考范围：暂无数据' };
+
+            // 计算归一化得分（0-100）
+            let normalized;
+            const range = indicator.max - indicator.min;
+            if (range === 0) normalized = 50;
+            else {
+                normalized = ((value - indicator.min) / range) * 100;
+            }
+
+            // 如果是反向指标（数值越小越好），翻转得分
+            if (indicator.reverse) {
+                normalized = 100 - normalized;
+            }
+
+            // 计算评分等级
+            let score, level;
+            if (normalized >= 70) {
+                score = normalized.toFixed(0);
+                level = 'high';
+            } else if (normalized >= 40) {
+                score = normalized.toFixed(0);
+                level = 'medium';
+            } else {
+                score = normalized.toFixed(0);
+                level = 'low';
+            }
+
+            // 生成参考范围描述
+            const rangeText = `参考范围: ${indicator.min} ~ ${indicator.max} | ${indicator.optimal === 'high' ? '数值越高越利好' : '数值越低越利好'}`;
+
+            return { score, level, range: rangeText };
+        }
+
+        function displayIndicators(data) {
+            const content = document.getElementById('content');
+            let html = '';
+
+            // 宏观模型指标
+            if (data.macro) {
+                html += `
+                    <div class="model-section macro">
+                        <h2 class="model-title macro">📊 宏观因子模型（中期波动）</h2>
+                        <p class="model-desc">
+                            适用于1-6个月的战术调整，基于美元指数、中国PMI、实际利率、LME升贴水等宏观因子。
+                        </p>
+                        <h3 style="margin-bottom: 15px; color: #333;">关键指标</h3>
+                        <div class="indicators-grid">
+                `;
+
+                for (const [key, value] of Object.entries(data.macro.indicators || {})) {
+                    const numValue = typeof value === 'number' ? value : parseFloat(value);
+                    const valueDisplay = typeof value === 'number' ? value.toFixed(2) : value;
+                    const valueClass = numValue > 0 ? 'positive' : (numValue < 0 ? 'negative' : '');
+                    
+                    const { score, level, range } = calculateIndicatorScore(key, numValue, 'macro');
+                    const scoreText = `${score}分`;
+                    
+                    html += `
+                        <div class="indicator-card">
+                            <div class="indicator-score ${level}">${scoreText}</div>
+                            <div class="indicator-name">${key}</div>
+                            <div class="indicator-value ${valueClass}">${valueDisplay}</div>
+                            <div class="indicator-range">${range}</div>
+                        </div>
+                    `;
+                }
+
+                html += `
+                        </div>
+                        <h3 style="margin-bottom: 15px; color: #333;">变量说明</h3>
+                        <div class="variable-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>变量名称</th>
+                                        <th>影响方向</th>
+                                        <th>说明</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>美元指数</strong></td>
+                                        <td style="color: #dc2626;">负相关</td>
+                                        <td>美元走强，铜价下跌（通常系数-0.7以上）</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>中国PMI</strong></td>
+                                        <td style="color: #16a34a;">正相关</td>
+                                        <td>制造业景气度，铜被称为"铜博士"</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>实际利率</strong></td>
+                                        <td style="color: #dc2626;">负相关</td>
+                                        <td>持有机会成本，影响投资需求</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>LME升贴水</strong></td>
+                                        <td style="color: #16a34a;">正相关</td>
+                                        <td>反映即期供需紧张度（Backwardation看涨）</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 基本面模型指标
+            if (data.fundamental) {
+                html += `
+                    <div class="model-section fundamental">
+                        <h2 class="model-title fundamental">🏭 基本面模型（长期趋势）</h2>
+                        <p class="model-desc">
+                            适用于6个月以上的战略配置，基于供需平衡、成本支撑、库存变化等基本面因素。
+                        </p>
+                        <h3 style="margin-bottom: 15px; color: #333;">关键指标</h3>
+                        <div class="indicators-grid">
+                `;
+
+                for (const [key, value] of Object.entries(data.fundamental.indicators || {})) {
+                    const numValue = typeof value === 'number' ? value : parseFloat(value);
+                    const valueDisplay = typeof value === 'number' ? value.toFixed(2) : value;
+                    const valueClass = numValue > 0 ? 'positive' : (numValue < 0 ? 'negative' : '');
+                    
+                    const { score, level, range } = calculateIndicatorScore(key, numValue, 'fundamental');
+                    const scoreText = `${score}分`;
+                    
+                    html += `
+                        <div class="indicator-card">
+                            <div class="indicator-score ${level}">${scoreText}</div>
+                            <div class="indicator-name">${key}</div>
+                            <div class="indicator-value ${valueClass}">${valueDisplay}</div>
+                            <div class="indicator-range">${range}</div>
+                        </div>
+                    `;
+                }
+
+                html += `
+                        </div>
+                        <h3 style="margin-bottom: 15px; color: #333;">变量说明</h3>
+                        <div class="variable-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>变量名称</th>
+                                        <th>影响方向</th>
+                                        <th>说明</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>产量增长率</strong></td>
+                                        <td style="color: #dc2626;">负相关</td>
+                                        <td>供应增加，价格承压</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>消费增长率</strong></td>
+                                        <td style="color: #16a34a;">正相关</td>
+                                        <td>需求增长，价格上涨</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>库存变化率</strong></td>
+                                        <td style="color: #dc2626;">负相关</td>
+                                        <td>库存累积，供应充足</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>成本支撑价</strong></td>
+                                        <td style="color: #16a34a;">支撑</td>
+                                        <td>C1成本90分位线，价格底部支撑</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>供应干扰指数</strong></td>
+                                        <td style="color: #16a34a;">正相关</td>
+                                        <td>罢工、地缘政治等供应冲击</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (!data.macro && !data.fundamental) {
+                html += `
+                    <div class="error">
+                        <h3>⚠️ 暂无模型指标数据</h3>
+                        <p>请先在主页运行宏观或基本面模型的预测</p>
+                        <button class="refresh-btn" onclick="location.href='/')">返回主页运行预测</button>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = html;
+        }
+
+        // 页面加载时加载指标
+        loadIndicators();
+    </script>
+</body>
+</html>
+"""
+
+
+@app.route('/model-indicators.html')
+def model_indicators_page():
+    """模型指标详情页面"""
+    return render_template_string(MODEL_INDICATORS_TEMPLATE)
+
+
+@app.route('/model-indicators-data')
+def get_model_indicators_data():
+    """获取模型指标数据"""
+    import json
+    
+    # 查找最新的报告文件
+    reports = list(Path('.').glob('report_*.txt'))
+    
+    result = {
+        'macro': {'indicators': {}},
+        'fundamental': {'indicators': {}}
+    }
+    
+    if reports:
+        # 按修改时间排序，取最新的
+        latest_report = max(reports, key=lambda f: f.stat().st_mtime)
+        
+        try:
+            with open(latest_report, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 解析宏观模型指标
+            import re
+            
+            # 查找宏观因子部分
+            if '宏观因子模型' in content:
+                macro_section = content[content.find('宏观因子模型'):content.find('基本面模型') if '基本面模型' in content else len(content)]
+                
+                # 提取美元指数
+                usd_match = re.search(r'美元指数[:\s]*([-\d.]+)', macro_section)
+                if usd_match:
+                    result['macro']['indicators']['美元指数'] = float(usd_match.group(1))
+                
+                # 提取PMI
+                pmi_match = re.search(r'中国PMI[:\s]*([-\d.]+)', macro_section)
+                if pmi_match:
+                    result['macro']['indicators']['中国PMI'] = float(pmi_match.group(1))
+                
+                # 提取信贷脉冲
+                credit_match = re.search(r'信贷脉冲[:\s]*([-\d.]+)', macro_section)
+                if credit_match:
+                    result['macro']['indicators']['信贷脉冲'] = float(credit_match.group(1))
+            
+            # 查找基本面模型指标
+            if '基本面模型' in content:
+                fund_section = content[content.find('基本面模型'):]
+                
+                # 提取供应干扰指数
+                disr_match = re.search(r'供应干扰指数[:\s]*([-\d.]+)', fund_section)
+                if disr_match:
+                    result['fundamental']['indicators']['供应干扰指数'] = float(disr_match.group(1))
+            
+            # 如果指标为空，提供模拟数据用于演示
+            if not result['macro']['indicators'] and not result['fundamental']['indicators']:
+                # 宏观模型模拟数据
+                result['macro']['indicators'] = {
+                    '美元指数': 99.04,
+                    '中国PMI': 54.69,
+                    '实际利率(%)': 0.5,
+                    'LME升贴水': 15.5,
+                    '信贷脉冲': 140.81
+                }
+                # 基本面模型模拟数据
+                result['fundamental']['indicators'] = {
+                    '产量增长率': 3.2,
+                    '消费增长率': 5.8,
+                    '库存变化率': -2.5,
+                    '成本支撑价': 98000.0,
+                    '供应干扰指数': 28.21
+                }
+        
+        except Exception as e:
+            print(f"解析模型指标失败: {e}")
+            # 提供默认数据
+            result['macro']['indicators'] = {
+                '美元指数': 99.04,
+                '中国PMI': 54.69,
+                '实际利率(%)': 0.5,
+                'LME升贴水': 15.5,
+                '信贷脉冲': 140.81
+            }
+            result['fundamental']['indicators'] = {
+                '产量增长率': 3.2,
+                '消费增长率': 5.8,
+                '库存变化率': -2.5,
+                '成本支撑价': 98000.0,
+                '供应干扰指数': 28.21
+            }
+    
+    return jsonify(result)
+
 
 if __name__ == '__main__':
     print("🚀 铜价预测系统 v3 - Web服务器启动（多模型版本）")

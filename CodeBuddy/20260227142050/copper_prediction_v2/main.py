@@ -112,37 +112,58 @@ class CopperPredictionSystem:
         # 数据缓存
         self.current_data = None
         self.current_features = None
+        self.current_end_date = None  # 保存目标日期
 
         print(f"✓ 系统初始化完成 (数据源: {data_source})\n")
 
-    def load_data(self, days: int = 365) -> pd.DataFrame:
+    def load_data(self, days: int = 365, target_date: Optional[str] = None) -> pd.DataFrame:
         """
         加载数据
 
         Args:
             days: 历史数据天数
+            target_date: 目标日期 (格式: YYYYMMDD 或 YYYY-MM-DD), 如果为None则使用当前日期
         """
-        print(f"[数据加载] 获取最近 {days} 天数据...")
+        # 解析目标日期
+        if target_date:
+            # 支持两种日期格式
+            if '-' in target_date:
+                end_date = datetime.strptime(target_date, "%Y-%m-%d")
+            else:
+                end_date = datetime.strptime(target_date, "%Y%m%d")
+            print(f"[数据加载] 目标日期: {end_date.strftime('%Y-%m-%d')}")
+        else:
+            end_date = datetime.now()
+
+        start_date = end_date - timedelta(days=days)
+        
+        print(f"[数据加载] 获取 {start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')} 的数据 ({days}天)...")
 
         if self.data_source_type == "real" and self.data_manager:
-            # 使用真实数据
-            data = self.data_manager.get_full_data(days=days)
+            # 使用真实数据 - 根据目标日期获取历史数据
+            data = self.data_manager.get_full_data(
+                days=days,
+                end_date=end_date.strftime("%Y-%m-%d")
+            )
         else:
             # 使用模拟数据
             from data.data_sources import MockDataSource
             source = MockDataSource()
             data = source.fetch_copper_price(
-                start_date=(datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d"),
-                end_date=datetime.now().strftime("%Y-%m-%d")
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d")
             )
 
         if data.empty:
             raise ValueError("数据加载失败")
 
         self.current_data = data
+        self.current_end_date = end_date  # 保存目标日期
         print(f"✓ 加载完成: {len(data)} 条记录, {len(data.columns)} 个字段")
         print(f"  日期范围: {data.index[0].date()} ~ {data.index[-1].date()}")
-        print(f"  最新价格: ¥{data['close'].iloc[-1]:,.2f}")
+        if 'close' in data.columns:
+            print(f"  最新价格: ¥{data['close'].iloc[-1]:,.2f}")
+            print(f"  目标日期: {end_date.strftime('%Y-%m-%d')}")
 
         return data
 
@@ -425,6 +446,9 @@ class CopperPredictionSystem:
         if self.current_data is None:
             self.load_data()
 
+        # 使用目标日期或当前日期
+        report_date = self.current_end_date if self.current_end_date else datetime.now()
+
         # 1. 基础统计
         close = self.current_data['close']
         stats = {
@@ -490,7 +514,7 @@ class CopperPredictionSystem:
         report = f"""
 {'='*60}
 铜价预测系统 v2 - {model_type_title}报告
-生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+生成时间: {report_date.strftime('%Y-%m-%d %H:%M:%S')}
 {'='*60}
 
 【市场概况】
@@ -509,11 +533,27 @@ class CopperPredictionSystem:
 宏观因子模型 (中期波动，1-6个月)
   核心驱动: 美元指数 | PMI | 实际利率 | LME升贴水
   预测 (90天): ¥{macro_pred['predicted_price']:,.2f} ({macro_pred['predicted_return']:+.2f}%)
+"""
 
+        # 添加宏观指标详情
+        if 'key_indicators' in macro_pred and macro_pred['key_indicators']:
+            report += "  关键指标:\n"
+            for key, value in macro_pred['key_indicators'].items():
+                report += f"    {key}: {value:,.2f}\n"
+
+        report += f"""
 基本面模型 (长期趋势，6个月+)
   核心驱动: 供需平衡 | 成本支撑 | 矿山干扰
   预测 (180天): ¥{fundamental_pred['predicted_price']:,.2f} ({fundamental_pred['predicted_return']:+.2f}%)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
+        # 添加基本面指标详情
+        if 'key_indicators' in fundamental_pred and fundamental_pred['key_indicators']:
+            report += "  关键指标:\n"
+            for key, value in fundamental_pred['key_indicators'].items():
+                report += f"    {key}: {value:,.2f}\n"
+
+        report += """━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【关键因子】
 {chr(10).join([f'- {f}' for f in top_features])}
@@ -532,7 +572,7 @@ class CopperPredictionSystem:
 """
 
         # 保存文本报告
-        report_file = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        report_file = f"report_{report_date.strftime('%Y%m%d_%H%M%S')}.txt"
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write(report)
 
@@ -541,16 +581,20 @@ class CopperPredictionSystem:
         # 生成HTML报告
         html_report_file = self._generate_html_report(
             stats, short_pred, medium_pred, top_features, model_metrics,
-            macro_pred, fundamental_pred
+            macro_pred, fundamental_pred, report_date
         )
         print(f"✓ HTML报告已保存: {html_report_file}")
 
         return report
 
     def _generate_html_report(self, stats, short_pred, medium_pred, top_features, model_metrics,
-                             macro_pred=None, fundamental_pred=None) -> str:
+                             macro_pred=None, fundamental_pred=None, report_date=None) -> str:
         """生成HTML格式的报告"""
         from pathlib import Path
+
+        # 使用目标日期或当前日期
+        if report_date is None:
+            report_date = datetime.now()
 
         # 读取模板
         template_path = Path(__file__).parent / 'templates' / 'report_template.html'
@@ -558,7 +602,7 @@ class CopperPredictionSystem:
             template = f.read()
 
         # 填充数据
-        html_content = template.replace('{{ generation_time }}', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        html_content = template.replace('{{ generation_time }}', report_date.strftime('%Y-%m-%d %H:%M:%S'))
         html_content = html_content.replace('{{ current_price }}', f"{stats['current_price']:,.2f}")
         html_content = html_content.replace('{{ price_change_1d }}', f"{stats['price_change_1d']:.2f}")
         html_content = html_content.replace('{{ price_change_1w }}', f"{stats['price_change_1w']:.2f}")
@@ -763,8 +807,9 @@ class CopperPredictionSystem:
         print("🚀 快速演示 - 铜价预测系统 v2 (多模型版本)")
         print("="*60)
 
-        # 1. 加载数据
-        self.load_data(days=365)
+        # 1. 加载数据（如果尚未加载）
+        if self.current_data is None:
+            self.load_data(days=365)
 
         # 2. 训练技术模型
         try:
@@ -833,27 +878,37 @@ if __name__ == '__main__':
     parser.add_argument('--data-source', default='auto',
                        choices=['auto', 'mock', 'akshare', 'yahoo'],
                        help='数据源选择: auto=自动检测, mock=模拟, akshare=AKShare, yahoo=Yahoo Finance')
+    parser.add_argument('--days', type=int, default=365,
+                       help='历史数据天数 (默认: 365)')
+    parser.add_argument('--target-date', type=str, default=None,
+                       help='目标预测日期 (格式: YYYYMMDD)')
 
     args = parser.parse_args()
 
     # 创建系统
     system = CopperPredictionSystem(data_source=args.data_source)
 
+    # 如果指定了目标日期，显示信息
+    if args.target_date:
+        print(f"\n📅 目标预测日期: {args.target_date}")
+        print(f"📊 使用历史数据: {args.days}天\n")
+
     if args.demo:
+        system.load_data(days=args.days, target_date=args.target_date)
         system.quick_demo()
     elif args.predict:
-        system.load_data()
+        system.load_data(days=args.days, target_date=args.target_date)
         system.predict()
     elif args.train:
-        system.load_data()
+        system.load_data(days=args.days, target_date=args.target_date)
         system.train_xgboost()
         system.train_macro()
         system.train_fundamental()
     elif args.train_xgb:
-        system.load_data()
+        system.load_data(days=args.days, target_date=args.target_date)
         system.train_xgboost()
     elif args.train_macro:
-        system.load_data()
+        system.load_data(days=args.days, target_date=args.target_date)
         system.train_macro()
         # 生成报告和PPT（不包含XGBoost模型）
         system.generate_report(include_xgb=False)
@@ -862,7 +917,7 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"PPT报告生成跳过: {e}")
     elif args.train_fundamental:
-        system.load_data()
+        system.load_data(days=args.days, target_date=args.target_date)
         system.train_fundamental()
         # 生成报告和PPT（不包含XGBoost模型）
         system.generate_report(include_xgb=False)

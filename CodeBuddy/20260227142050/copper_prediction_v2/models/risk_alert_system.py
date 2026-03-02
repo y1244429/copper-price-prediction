@@ -327,7 +327,9 @@ class CopperRiskMonitor:
         """
         alerts = []
 
-        # LME注销仓单占比预警
+        # LME注销仓单占比预警（暂时注释，使用模拟数据）
+        # TODO: 接入真实LME数据后再启用
+        """
         if 'lme_warrant_cancel_ratio' in inventory_data:
             cancel_ratio = inventory_data['lme_warrant_cancel_ratio']
 
@@ -360,6 +362,104 @@ class CopperRiskMonitor:
                         "检查现货采购渠道"
                     ]
                 ))
+        """
+
+        # LME注销仓单占比变化预警（暂时注释，使用模拟数据）
+        # TODO: 接入真实LME数据后再启用
+        """
+        if 'warrant_cancel_change' in inventory_data:
+            change_data = inventory_data['warrant_cancel_change']
+
+            # 检查是否可用
+            if change_data.get('available'):
+                percentage_change = change_data.get('percentage_change', 0)
+                current_value = change_data.get('current_value', 0)
+                trend = change_data.get('trend', '')
+
+                # 大幅上升预警（超过10%且当前值较高）
+                if percentage_change > 10 and current_value > 40:
+                    alerts.append(AlertSignal(
+                        alert_level=AlertLevel.LEVEL_3,
+                        signal_type="库存",
+                        indicator_name="LME注销仓单占比变化",
+                        current_value=percentage_change,
+                        threshold=10.0,
+                        message=f"LME注销仓单占比在{change_data.get('days_ago', 7)}天内上升{percentage_change:.1f}%，从{change_data.get('previous_value', 0):.1f}%增至{current_value:.1f}%，挤仓风险快速上升",
+                        timestamp=datetime.now(),
+                        action_required=[
+                            "立即核查注销仓单明细和流出速度",
+                            "评估现货采购渠道的及时性",
+                            "检查空头头寸的交割能力",
+                            "考虑提前移仓或减少空头敞口"
+                        ]
+                    ))
+
+                # 中等幅度上升预警（超过5%）
+                elif percentage_change > 5 and current_value > 30:
+                    alerts.append(AlertSignal(
+                        alert_level=AlertLevel.LEVEL_2,
+                        signal_type="库存",
+                        indicator_name="LME注销仓单占比变化",
+                        current_value=percentage_change,
+                        threshold=5.0,
+                        message=f"LME注销仓单占比在{change_data.get('days_ago', 7)}天内上升{percentage_change:.1f}%，从{change_data.get('previous_value', 0):.1f}%增至{current_value:.1f}%，交割压力增加",
+                        timestamp=datetime.now(),
+                        action_required=[
+                            "关注注销仓单变化趋势",
+                            "检查现货采购渠道",
+                            "评估展期成本变化"
+                        ]
+                    ))
+
+                # 小幅上升但超过阈值预警
+                elif percentage_change > 2 and current_value > self.thresholds.lme_warrant_cancel_ratio_level_2:
+                    alerts.append(AlertSignal(
+                        alert_level=AlertLevel.LEVEL_1,
+                        signal_type="库存",
+                        indicator_name="LME注销仓单占比变化",
+                        current_value=percentage_change,
+                        threshold=2.0,
+                        message=f"LME注销仓单占比小幅上升{percentage_change:.1f}%，当前值为{current_value:.1f}%，需持续关注",
+                        timestamp=datetime.now(),
+                        action_required=[
+                            "持续关注注销仓单占比变化",
+                            "监测仓单流出速度"
+                        ]
+                    ))
+
+                # 大幅下降预警（超过15%，可能意味着缓解）
+                elif percentage_change < -15:
+                    alerts.append(AlertSignal(
+                        alert_level=AlertLevel.LEVEL_1,
+                        signal_type="库存",
+                        indicator_name="LME注销仓单占比变化",
+                        current_value=percentage_change,
+                        threshold=-15.0,
+                        message=f"LME注销仓单占比大幅下降{abs(percentage_change):.1f}%，从{change_data.get('previous_value', 0):.1f}%降至{current_value:.1f}%，挤仓压力缓解",
+                        timestamp=datetime.now(),
+                        action_required=[
+                            "确认注销仓单下降原因（新仓单注册还是交割完成）",
+                            "评估市场流动性改善情况"
+                        ]
+                    ))
+
+                # 移动平均快速上升预警（5日均值快速上升）
+                ma5_change = change_data.get('ma5_change', 0)
+                if ma5_change > 5 and current_value > 35:
+                    alerts.append(AlertSignal(
+                        alert_level=AlertLevel.LEVEL_2,
+                        signal_type="库存",
+                        indicator_name="LME注销仓单占比5日均线变化",
+                        current_value=ma5_change,
+                        threshold=5.0,
+                        message=f"LME注销仓单占比5日均线快速上升{ma5_change:.1f}%，短期趋势恶化",
+                        timestamp=datetime.now(),
+                        action_required=[
+                            "关注短期趋势变化",
+                            "准备应对可能的逼仓风险"
+                        ]
+                    ))
+        """
 
         return alerts
 
@@ -510,7 +610,10 @@ class CopperRiskMonitor:
         print("="*60)
 
         return {
-            'current_level': self.current_level,
+            'current_level': self.current_level.value,
+            'level_label': self.current_level.get_label(),
+            'level_emoji': self.current_level.get_emoji(),
+            'level_color': self.current_level.get_color(),
             'alerts': [alert.to_dict() for alert in self.alerts],
             'summary': summary,
             'timestamp': datetime.now().isoformat()
@@ -676,16 +779,30 @@ class CopperRiskMonitor:
     def _check_inventory_update(self, inventory_data: Dict = None) -> Dict:
         """检查库存数据更新"""
         if inventory_data and 'lme_inventory' in inventory_data:
-            return {
-                'item': "检查三地库存数据更新（LME/COMEX/SHFE）",
-                'status': 'passed',
-                'message': f"✅ LME库存: {inventory_data['lme_inventory']:.0f}吨 - 数据已更新",
-                'timestamp': datetime.now().isoformat()
-            }
+            lme_inv = inventory_data['lme_inventory']
+            comex_inv = inventory_data.get('comex_inventory')
+            shfe_inv = inventory_data.get('shfe_inventory')
+
+            # 构建库存信息消息
+            parts = []
+            if lme_inv is not None:
+                parts.append(f"LME: {lme_inv:.0f}吨")
+            if comex_inv is not None:
+                parts.append(f"COMEX: {comex_inv:.0f}吨")
+            if shfe_inv is not None:
+                parts.append(f"SHFE: {shfe_inv:.0f}吨")
+
+            if parts:
+                return {
+                    'item': "检查三地库存数据更新（LME/COMEX/SHFE）",
+                    'status': 'passed',
+                    'message': f"✅ {' | '.join(parts)} - 数据已更新",
+                    'timestamp': datetime.now().isoformat()
+                }
         return {
             'item': "检查三地库存数据更新（LME/COMEX/SHFE）",
             'status': 'warning',
-            'message': "⚠️ 库存数据未更新或缺失",
+            'message': "⚠️ 库存数据未更新或缺失（LME/COMEX需要付费订阅）",
             'timestamp': datetime.now().isoformat()
         }
 

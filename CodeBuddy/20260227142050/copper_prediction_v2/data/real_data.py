@@ -17,28 +17,35 @@ class RealDataManager:
         self.ak = AKShareDataSource()
         self.yahoo = None  # Yahoo Finance (可选)
 
-    def get_full_data(self, days: int = 365) -> pd.DataFrame:
+    def get_full_data(self, days: int = 365, end_date: Optional[str] = None) -> pd.DataFrame:
         """
         获取完整数据（包括价格和宏观指标）
 
         Args:
             days: 获取多少天的历史数据
+            end_date: 结束日期 (格式: YYYY-MM-DD), 如果为None则使用当前日期
 
         Returns:
             完整的数据DataFrame
         """
         from datetime import datetime, timedelta
 
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+        # 解析结束日期
+        if end_date:
+            target_end_date = datetime.strptime(end_date, "%Y-%m-%d")
+        else:
+            target_end_date = datetime.now()
+
+        start_date = target_end_date - timedelta(days=days)
 
         # 尝试从AKShare获取数据
         if self.ak.available:
             try:
                 data = self.ak.fetch_copper_price(
                     start_date=start_date.strftime("%Y-%m-%d"),
-                    end_date=end_date.strftime("%Y-%m-%d")
+                    end_date=target_end_date.strftime("%Y-%m-%d")
                 )
+                print(f"✅ 从AKShare获取数据: {len(data)} 条记录")
                 return data
             except Exception as e:
                 print(f"AKShare数据获取失败: {e}")
