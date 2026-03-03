@@ -270,22 +270,51 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
     title_frame.paragraphs[0].font.bold = True
     title_frame.paragraphs[0].font.color.rgb = PRIMARY_COLOR
 
-    # 添加宏观因子配置权重
+    # 获取当前指标值（从macro_pred中）
+    macro_indicators = macro_pred.get('key_indicators', {}) if macro_pred else {}
+    usd_value = macro_indicators.get('美元指数', 98.97)
+    pmi_value = macro_indicators.get('中国PMI', 54.04)
+    credit_value = macro_indicators.get('信贷脉冲', -70.19)
+
+    # 计算各指标的评估得分
+    # 美元指数：越低越好（与铜价负相关），参考范围90-110
+    usd_score = int(max(0, min(100, (110 - usd_value) / 20 * 100)))
+    usd_score_color = RGBColor(16, 185, 129) if usd_score >= 60 else (RGBColor(245, 158, 11) if usd_score >= 40 else RGBColor(239, 68, 68))
+
+    # PMI：越高越好，参考范围45-55
+    pmi_score = int(max(0, min(100, (pmi_value - 45) / 10 * 100)))
+    pmi_score_color = RGBColor(16, 185, 129) if pmi_score >= 60 else (RGBColor(245, 158, 11) if pmi_score >= 40 else RGBColor(239, 68, 68))
+
+    # 实际利率：越低越好，参考范围-2到4
+    rate_value = macro_indicators.get('实际利率(%)', 0.5)
+    rate_score = int(max(0, min(100, (4 - rate_value) / 6 * 100)))
+    rate_score_color = RGBColor(16, 185, 129) if rate_score >= 60 else (RGBColor(245, 158, 11) if rate_score >= 40 else RGBColor(239, 68, 68))
+
+    # LME升贴水：越高越好，参考范围-50到100
+    lme_value = macro_indicators.get('LME升贴水', 15.5)
+    lme_score = int(max(0, min(100, (lme_value + 50) / 150 * 100)))
+    lme_score_color = RGBColor(16, 185, 129) if lme_score >= 60 else (RGBColor(245, 158, 11) if lme_score >= 40 else RGBColor(239, 68, 68))
+
+    # 添加宏观因子配置权重及当前值和得分
     macro_weights = [
-        ("美元指数 (USD)", "权重: 30%", "与铜价负相关,系数通常-0.7以上", RGBColor(102, 126, 234)),
-        ("中国PMI", "权重: 25%", "铜被称为'铜博士',对全球制造业景气度极度敏感", RGBColor(118, 75, 162)),
-        ("实际利率 (10Y TIPS)", "权重: 20%", "反映持有机会成本", RGBColor(16, 185, 129)),
-        ("期限结构 (LME升贴水)", "权重: 25%", "反映即期供需紧张度", RGBColor(79, 172, 254))
+        ("美元指数 (USD)", "权重: 30%", "与铜价负相关,系数通常-0.7以上",
+         RGBColor(102, 126, 234), usd_value, usd_score, usd_score_color),
+        ("中国PMI", "权重: 25%", "铜被称为'铜博士',对全球制造业景气度极度敏感",
+         RGBColor(118, 75, 162), pmi_value, pmi_score, pmi_score_color),
+        ("实际利率 (10Y TIPS)", "权重: 20%", "反映持有机会成本",
+         RGBColor(16, 185, 129), rate_value, rate_score, rate_score_color),
+        ("期限结构 (LME升贴水)", "权重: 25%", "反映即期供需紧张度",
+         RGBColor(79, 172, 254), lme_value, lme_score, lme_score_color)
     ]
 
-    for i, (name, weight, desc, color) in enumerate(macro_weights):
+    for i, (name, weight, desc, color, current_value, score_value, score_color) in enumerate(macro_weights):
         # 卡片背景
         card = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
             Inches(0.5 + (i % 2) * 6.2),
-            Inches(1.5 + (i // 2) * 1.8),
+            Inches(1.3 + (i // 2) * 2),
             Inches(6),
-            Inches(1.5)
+            Inches(1.8)
         )
         card.fill.solid()
         card.fill.fore_color.rgb = color
@@ -300,24 +329,32 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         # 因子名称
         p1 = text_frame.paragraphs[0]
         p1.text = name
-        p1.font.size = Pt(18)
+        p1.font.size = Pt(16)
         p1.font.bold = True
         p1.font.color.rgb = WHITE
 
         # 权重
         p2 = text_frame.add_paragraph()
         p2.text = weight
-        p2.font.size = Pt(22)
+        p2.font.size = Pt(18)
         p2.font.bold = True
         p2.font.color.rgb = WHITE
-        p2.space_before = Pt(5)
+        p2.space_before = Pt(3)
 
-        # 描述
+        # 当前值
         p3 = text_frame.add_paragraph()
-        p3.text = desc
-        p3.font.size = Pt(12)
+        p3.text = f"当前值: {current_value:.2f}"
+        p3.font.size = Pt(14)
         p3.font.color.rgb = WHITE
         p3.space_before = Pt(3)
+
+        # 评估得分
+        p4 = text_frame.add_paragraph()
+        p4.text = f"评估得分: {score_value}分"
+        p4.font.size = Pt(14)
+        p4.font.bold = True
+        p4.font.color.rgb = score_color
+        p4.space_before = Pt(2)
 
     # 添加模型特征重要性（如果模型提供了）
     if macro_model and hasattr(macro_model, 'feature_importance_') and macro_model.feature_importance_ is not None:
@@ -343,14 +380,48 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
     title_frame.paragraphs[0].font.color.rgb = PRIMARY_COLOR
 
     # 添加计算公式说明
-    formula_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.4), Inches(12.333), Inches(1.2))
+    formula_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.3), Inches(12.333), Inches(1))
     formula_frame = formula_box.text_frame
     formula_frame.word_wrap = True
     formula_frame.text = "综合得分 = USD指数 × (-0.7) + PMI × 0.5 + 实际利率 × (-0.3) + LME升贴水 × 0.4"
-    formula_frame.paragraphs[0].font.size = Pt(24)
+    formula_frame.paragraphs[0].font.size = Pt(22)
     formula_frame.paragraphs[0].font.color.rgb = BLACK
     formula_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
     formula_frame.paragraphs[0].font.bold = True
+
+    # 添加当前指标值展示
+    current_values_box = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(0.5),
+        Inches(2.5),
+        Inches(12.333),
+        Inches(0.7)
+    )
+    current_values_box.fill.solid()
+    current_values_box.fill.fore_color.rgb = RGBColor(16, 185, 129)
+    current_values_box.line.color.rgb = WHITE
+
+    current_values_frame = current_values_box.text_frame
+    current_values_frame.word_wrap = True
+    current_values_frame.margin_left = Inches(0.2)
+    current_values_frame.margin_right = Inches(0.2)
+
+    cv_p1 = current_values_frame.paragraphs[0]
+    cv_p1.text = f"当前指标值 | USD: {usd_value:.2f} | PMI: {pmi_value:.2f} | 利率: {rate_value:.2f}% | LME升贴水: {lme_value:.2f}"
+    cv_p1.font.size = Pt(18)
+    cv_p1.font.bold = True
+    cv_p1.font.color.rgb = WHITE
+    cv_p1.alignment = PP_ALIGN.CENTER
+
+    # 计算综合得分
+    composite_score = int((usd_score + pmi_score + rate_score + lme_score) / 4)
+    score_box = slide.shapes.add_textbox(Inches(0.5), Inches(3.4), Inches(12.333), Inches(0.6))
+    score_frame = score_box.text_frame
+    score_frame.text = f"当前综合评估得分: {composite_score}分"
+    score_frame.paragraphs[0].font.size = Pt(28)
+    score_frame.paragraphs[0].font.bold = True
+    score_frame.paragraphs[0].font.color.rgb = usd_score_color if composite_score >= 70 else (RGBColor(245, 158, 11) if composite_score >= 50 else RGBColor(239, 68, 68))
+    score_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
 
     # 添加计算步骤
     calc_steps = [
@@ -365,9 +436,9 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         card = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
             Inches(0.5 + (i % 2) * 6.2),
-            Inches(2.8 + (i // 2) * 1.2),
+            Inches(4.2 + (i // 2) * 0.9),
             Inches(6),
-            Inches(1)
+            Inches(0.75)
         )
         card.fill.solid()
         card.fill.fore_color.rgb = RGBColor(240, 242, 245)
@@ -383,23 +454,23 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         # 步骤标题
         p1 = text_frame.paragraphs[0]
         p1.text = step_title
-        p1.font.size = Pt(18)
+        p1.font.size = Pt(16)
         p1.font.bold = True
         p1.font.color.rgb = PRIMARY_COLOR
 
         # 步骤描述
         p2 = text_frame.add_paragraph()
         p2.text = f"{step_desc}"
-        p2.font.size = Pt(14)
+        p2.font.size = Pt(12)
         p2.font.color.rgb = BLACK
-        p2.space_before = Pt(3)
+        p2.space_before = Pt(2)
 
         # 步骤详情
         p3 = text_frame.add_paragraph()
         p3.text = step_detail
-        p3.font.size = Pt(12)
+        p3.font.size = Pt(10)
         p3.font.color.rgb = GRAY
-        p3.space_before = Pt(2)
+        p3.space_before = Pt(1)
 
     # 添加说明
     desc_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.3), Inches(12.333), Inches(0.4))
@@ -420,21 +491,43 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
     title_frame.paragraphs[0].font.bold = True
     title_frame.paragraphs[0].font.color.rgb = PRIMARY_COLOR
 
-    # 添加基本面配置权重
+    # 获取基本面指标值
+    fund_indicators = fundamental_pred.get('key_indicators', {}) if fundamental_pred else {}
+    disruption_value = fund_indicators.get('供应干扰指数', 28.62)
+
+    # 计算基本面维度的评估得分
+    # 供应维度：干扰指数越高越好（利好铜价），参考范围0-30
+    supply_score = int(min(100, disruption_value / 30 * 100))
+    supply_score_color = RGBColor(16, 185, 129) if supply_score >= 70 else (RGBColor(245, 158, 11) if supply_score >= 50 else RGBColor(239, 68, 68))
+
+    # 需求维度：假设消费增长率，参考范围-5到15
+    demand_growth = fund_indicators.get('消费增长率', 5.8)
+    demand_score = int(min(100, (demand_growth + 5) / 20 * 100))
+    demand_score_color = RGBColor(16, 185, 129) if demand_score >= 70 else (RGBColor(245, 158, 11) if demand_score >= 50 else RGBColor(239, 68, 68))
+
+    # 库存维度：库存变化率越低越好，参考范围-20到20
+    inventory_change = fund_indicators.get('库存变化率', -2.5)
+    inventory_score = int(min(100, (20 - inventory_change) / 40 * 100))
+    inventory_score_color = RGBColor(16, 185, 129) if inventory_score >= 70 else (RGBColor(245, 158, 11) if inventory_score >= 50 else RGBColor(239, 68, 68))
+
+    # 添加基本面配置权重及当前值和得分
     fundamental_weights = [
-        ("供应维度", "权重: 40%", "包括全球精铜产量、中国表观消费量", RGBColor(102, 126, 234)),
-        ("需求维度", "权重: 40%", "包括需求增长率、下游开工率", RGBColor(118, 75, 162)),
-        ("库存维度", "权重: 20%", "包括显性库存变化率、库存Z-score", RGBColor(16, 185, 129))
+        ("供应维度", "权重: 40%", "包括全球精铜产量、中国表观消费量",
+         RGBColor(102, 126, 234), disruption_value, supply_score, supply_score_color),
+        ("需求维度", "权重: 40%", "包括需求增长率、下游开工率",
+         RGBColor(118, 75, 162), demand_growth, demand_score, demand_score_color),
+        ("库存维度", "权重: 20%", "包括显性库存变化率、库存Z-score",
+         RGBColor(16, 185, 129), inventory_change, inventory_score, inventory_score_color)
     ]
 
-    for i, (name, weight, desc, color) in enumerate(fundamental_weights):
+    for i, (name, weight, desc, color, current_value, score_value, score_color) in enumerate(fundamental_weights):
         # 卡片背景
         card = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
             Inches(0.5 + i * 4.1),
-            Inches(1.5),
+            Inches(1.3),
             Inches(4),
-            Inches(2)
+            Inches(2.2)
         )
         card.fill.solid()
         card.fill.fore_color.rgb = color
@@ -449,24 +542,39 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         # 维度名称
         p1 = text_frame.paragraphs[0]
         p1.text = name
-        p1.font.size = Pt(20)
+        p1.font.size = Pt(18)
         p1.font.bold = True
         p1.font.color.rgb = WHITE
 
         # 权重
         p2 = text_frame.add_paragraph()
         p2.text = weight
-        p2.font.size = Pt(26)
+        p2.font.size = Pt(22)
         p2.font.bold = True
         p2.font.color.rgb = WHITE
-        p2.space_before = Pt(8)
+        p2.space_before = Pt(5)
+
+        # 当前值
+        p3 = text_frame.add_paragraph()
+        p3.text = f"当前值: {current_value:.2f}%"
+        p3.font.size = Pt(14)
+        p3.font.color.rgb = WHITE
+        p3.space_before = Pt(4)
+
+        # 评估得分
+        p4 = text_frame.add_paragraph()
+        p4.text = f"评估得分: {score_value}分"
+        p4.font.size = Pt(14)
+        p4.font.bold = True
+        p4.font.color.rgb = score_color
+        p4.space_before = Pt(2)
 
         # 描述
-        p3 = text_frame.add_paragraph()
-        p3.text = desc
-        p3.font.size = Pt(13)
-        p3.font.color.rgb = WHITE
-        p3.space_before = Pt(5)
+        p5 = text_frame.add_paragraph()
+        p5.text = desc
+        p5.font.size = Pt(11)
+        p5.font.color.rgb = WHITE
+        p5.space_before = Pt(2)
 
     # 添加成本支撑信息
     cost_box = slide.shapes.add_shape(
@@ -525,14 +633,48 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
     title_frame.paragraphs[0].font.color.rgb = PRIMARY_COLOR
 
     # 添加计算公式说明
-    formula_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.4), Inches(12.333), Inches(1.2))
+    formula_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.3), Inches(12.333), Inches(0.8))
     formula_frame = formula_box.text_frame
     formula_frame.word_wrap = True
     formula_frame.text = "综合得分 = 供应得分×0.4 + 需求得分×0.4 + 库存得分×0.2 + 成本支撑强度 - 干扰影响"
-    formula_frame.paragraphs[0].font.size = Pt(24)
+    formula_frame.paragraphs[0].font.size = Pt(20)
     formula_frame.paragraphs[0].font.color.rgb = BLACK
     formula_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
     formula_frame.paragraphs[0].font.bold = True
+
+    # 添加当前指标值展示
+    fund_current_box = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(0.5),
+        Inches(2.3),
+        Inches(12.333),
+        Inches(0.7)
+    )
+    fund_current_box.fill.solid()
+    fund_current_box.fill.fore_color.rgb = RGBColor(79, 172, 254)
+    fund_current_box.line.color.rgb = WHITE
+
+    fund_current_frame = fund_current_box.text_frame
+    fund_current_frame.word_wrap = True
+    fund_current_frame.margin_left = Inches(0.2)
+    fund_current_frame.margin_right = Inches(0.2)
+
+    fc_p1 = fund_current_frame.paragraphs[0]
+    fc_p1.text = f"当前指标值 | 供应干扰: {disruption_value:.2f} | 需求增长: {demand_growth:.2f}% | 库存变化: {inventory_change:.2f}%"
+    fc_p1.font.size = Pt(16)
+    fc_p1.font.bold = True
+    fc_p1.font.color.rgb = WHITE
+    fc_p1.alignment = PP_ALIGN.CENTER
+
+    # 计算综合得分
+    fund_composite_score = int((supply_score * 0.4 + demand_score * 0.4 + inventory_score * 0.2))
+    fund_score_box = slide.shapes.add_textbox(Inches(0.5), Inches(3.2), Inches(12.333), Inches(0.6))
+    fund_score_frame = fund_score_box.text_frame
+    fund_score_frame.text = f"当前综合评估得分: {fund_composite_score}分"
+    fund_score_frame.paragraphs[0].font.size = Pt(26)
+    fund_score_frame.paragraphs[0].font.bold = True
+    fund_score_frame.paragraphs[0].font.color.rgb = supply_score_color if fund_composite_score >= 70 else (RGBColor(245, 158, 11) if fund_composite_score >= 50 else RGBColor(239, 68, 68))
+    fund_score_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
 
     # 添加计算步骤
     fundamental_steps = [
@@ -547,9 +689,9 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         card = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
             Inches(0.5 + (i % 2) * 6.2),
-            Inches(2.8 + (i // 2) * 1.2),
+            Inches(4.0 + (i // 2) * 0.85),
             Inches(6),
-            Inches(1)
+            Inches(0.7)
         )
         card.fill.solid()
         card.fill.fore_color.rgb = RGBColor(240, 242, 245)
@@ -565,23 +707,23 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         # 步骤标题
         p1 = text_frame.paragraphs[0]
         p1.text = step_title
-        p1.font.size = Pt(18)
+        p1.font.size = Pt(16)
         p1.font.bold = True
         p1.font.color.rgb = PRIMARY_COLOR
 
         # 步骤描述
         p2 = text_frame.add_paragraph()
         p2.text = f"{step_desc}"
-        p2.font.size = Pt(14)
+        p2.font.size = Pt(12)
         p2.font.color.rgb = BLACK
-        p2.space_before = Pt(3)
+        p2.space_before = Pt(2)
 
         # 步骤详情
         p3 = text_frame.add_paragraph()
         p3.text = step_detail
-        p3.font.size = Pt(12)
+        p3.font.size = Pt(10)
         p3.font.color.rgb = GRAY
-        p3.space_before = Pt(2)
+        p3.space_before = Pt(1)
 
     # 添加说明
     desc_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.3), Inches(12.333), Inches(0.4))
