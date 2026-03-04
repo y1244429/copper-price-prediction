@@ -33,19 +33,25 @@ def get_real_china_pmi():
 
 
 def get_real_usd_index():
-    """获取美元指数"""
+    """获取美元指数 - 与RealEnhancedDataManager保持一致"""
     try:
-        import yfinance as yf
-        ticker = yf.Ticker("DX-Y.NYB")
-        hist = ticker.history(period="5d")
-        if not hist.empty:
-            latest = hist.iloc[-1]
-            value = float(latest['Close'])
-            print(f"✓ 获取美元指数: {value:.2f}")
-            return value
+        import akshare as ak
+        # 获取美元兑人民币汇率作为代理指标
+        df = ak.fx_spot_quote()
+        if not df.empty:
+            # 查找USD/CNY
+            usd_cny = df[df['货币对'] == 'USD/CNY'] if '货币对' in df.columns else df.head(1)
+            if not usd_cny.empty:
+                price = float(usd_cny.iloc[0]['最新价']) if '最新价' in usd_cny.columns else 7.2
+                # USD/CNY汇率越高，美元指数越高，使用更合理的转换公式
+                # 基准：USD/CNY 7.2 ≈ DXY 100
+                dollar_index = price / 7.2 * 100
+                print(f"✓ 获取美元指数 (USD/CNY): {price:.2f} → DXY: {dollar_index:.2f}")
+                return round(dollar_index, 2)
     except Exception as e:
         print(f"✗ 获取美元指数失败: {e}")
-    return 105.0
+    # 返回默认值（与RealEnhancedDataManager保持一致）
+    return 103.0
 
 
 def get_real_vix():
@@ -1110,6 +1116,23 @@ HTML_TEMPLATE = """
                 </a>
             </div>
 
+            <!-- 集成预测系统入口 -->
+            <div style="margin: 30px 0; padding: 30px; background: linear-gradient(135deg, #1e3c7215 0%, #2a529815 100%); border-radius: 15px; border: 2px solid #1e3c72;">
+                <a href="/integrated_prediction.html" style="text-decoration: none; display: flex; align-items: center; justify-content: space-between; transition: all 0.3s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                    <div style="display: flex; align-items: center;">
+                        <span style="font-size: 3em; margin-right: 20px;">🚀</span>
+                        <div>
+                            <h3 style="color: #1e3c72; margin: 0; font-size: 1.5em;">集成预测系统</h3>
+                            <p style="color: #666; margin: 8px 0 0 0; font-size: 1em;">传统模型 + 增强数据 = 更准确的预测</p>
+                            <p style="color: #999; margin: 5px 0 0 0; font-size: 0.9em;">实时宏观数据 · 资金流向 · 新闻情绪 · 智能融合</p>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; font-size: 1.1em; box-shadow: 0 5px 15px rgba(30, 60, 114, 0.3); transition: all 0.3s;" onmouseover="this.style.boxShadow='0 8px 25px rgba(30, 60, 114, 0.4)'" onmouseout="this.style.boxShadow='0 5px 15px rgba(30, 60, 114, 0.3)'">
+                        进入系统 →
+                    </div>
+                </a>
+            </div>
+
             <!-- 置信度说明卡片 -->
             <div style="margin: 30px 0; padding: 25px; background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border-radius: 15px; border: 2px solid #667eea;">
                 <div style="display: flex; align-items: center; margin-bottom: 20px;">
@@ -1177,7 +1200,7 @@ HTML_TEMPLATE = """
                 <button class="run-button" id="runDemoButton">
                     <span>🚀 全部模型</span>
                     <br>
-                    <span style="font-size: 0.7em; opacity: 0.9;">技术 + 宏观 + 基本面</span>
+                    <span style="font-size: 0.7em; opacity: 0.9;">技术 + 宏观 + 基本面 + 增强 + 集成系统</span>
                 </button>
                 <button class="run-button macro" id="runMacroButton">
                     <span>📊 宏观因子模型</span>
@@ -1353,6 +1376,47 @@ HTML_TEMPLATE = """
                                 <div style="padding: 10px; background: #e0f7fa; border-radius: 8px;">
                                     <span style="color: #666; font-size: 0.9em;">预测周期：</span>
                                     <span style="color: #0099cc; font-weight: 500;" id="fundamentalPeriod">长期（6个月+）</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 增强系统预测和集成系统预测 -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 25px;">
+                            <!-- 增强系统预测 -->
+                            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 5px solid #22c55e; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                <h4 style="color: #22c55e; margin: 0 0 15px 0; font-size: 1.2em; display: flex; align-items: center;">
+                                    <span style="margin-right: 8px;">🔸</span>增强系统预测
+                                </h4>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测价格：</span>
+                                    <span style="font-size: 1.5em; font-weight: bold; color: #333;" id="enhancedPrice">--</span>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">涨跌幅：</span>
+                                    <span style="font-size: 1.3em; font-weight: bold;" id="enhancedChange">--</span>
+                                </div>
+                                <div style="padding: 10px; background: #f0fdf4; border-radius: 8px;">
+                                    <span style="color: #666; font-size: 0.9em;">特点：</span>
+                                    <span style="color: #22c55e; font-weight: 500;">融合宏观+资金+情绪数据</span>
+                                </div>
+                            </div>
+
+                            <!-- 集成系统预测 -->
+                            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                <h4 style="color: #667eea; margin: 0 0 15px 0; font-size: 1.2em; display: flex; align-items: center;">
+                                    <span style="margin-right: 8px;">✨</span>集成系统预测
+                                </h4>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">预测价格：</span>
+                                    <span style="font-size: 1.5em; font-weight: bold; color: #333;" id="integratedPrice">--</span>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 0.9em;">涨跌幅：</span>
+                                    <span style="font-size: 1.3em; font-weight: bold;" id="integratedChange">--</span>
+                                </div>
+                                <div style="padding: 10px; background: #f0f4ff; border-radius: 8px;">
+                                    <span style="color: #666; font-size: 0.9em;">特点：</span>
+                                    <span style="color: #667eea; font-weight: 500;">传统模型 + 增强数据 + 风险调整</span>
                                 </div>
                             </div>
                         </div>
@@ -1839,6 +1903,44 @@ HTML_TEMPLATE = """
                         updateModelResult('fundamental', results.fundamental);
                     }
 
+                    // 加载并显示增强系统和集成系统预测
+                    const integratedPrediction = await loadIntegratedPrediction();
+
+                    // 添加集成预测到结果中并重新计算综合预测
+                    if (integratedPrediction) {
+                        results.integrated = integratedPrediction;
+                        // 重新计算综合预测
+                        if (results.xgboost && results.macro && results.fundamental) {
+                            const avgPrice = (results.xgboost.price + results.macro.price + results.fundamental.price + results.integrated.price) / 4;
+                            const avgChange = (results.xgboost.change + results.macro.change + results.fundamental.change + results.integrated.change) / 4;
+
+                            // 计算一致性（四个模型方向是否一致且幅度接近）
+                            const directions = [
+                                results.xgboost.change >= 0 ? 1 : -1,
+                                results.macro.change >= 0 ? 1 : -1,
+                                results.fundamental.change >= 0 ? 1 : -1,
+                                results.integrated.change >= 0 ? 1 : -1
+                            ];
+                            const sameDirection = directions.every(d => d === directions[0]);
+
+                            // 检查幅度是否接近（标准差小于平均值的30%）
+                            const changes = [results.xgboost.change, results.macro.change, results.fundamental.change, results.integrated.change];
+                            const avgChangeAbs = Math.abs(avgChange);
+                            const variance = changes.reduce((sum, val) => sum + Math.pow(val - avgChange, 2), 0) / changes.length;
+                            const stdDev = Math.sqrt(variance);
+                            const similarMagnitude = avgChangeAbs === 0 || (stdDev / avgChangeAbs) < 0.3;
+
+                            const consensus = (sameDirection && similarMagnitude) ? '高度一致' : '存在分歧';
+
+                            results.ensemble = {
+                                price: avgPrice,
+                                change: avgChange,
+                                direction: avgChange >= 0 ? '看涨' : '看跌',
+                                consensus: consensus
+                            };
+                        }
+                    }
+
                     // 综合预测
                     if (results.ensemble) {
                         updateEnsembleResult(results.ensemble);
@@ -1868,6 +1970,7 @@ HTML_TEMPLATE = """
                 xgboost: null,
                 macro: null,
                 fundamental: null,
+                integrated: null,
                 ensemble: null
             };
 
@@ -1902,19 +2005,54 @@ HTML_TEMPLATE = """
                 };
             }
 
-            // 综合预测（计算平均值）
-            if (results.xgboost && results.macro && results.fundamental) {
+            // 综合预测（计算平均值，包含集成系统预测）
+            if (results.xgboost && results.macro && results.fundamental && results.integrated) {
+                const avgPrice = (results.xgboost.price + results.macro.price + results.fundamental.price + results.integrated.price) / 4;
+                const avgChange = (results.xgboost.change + results.macro.change + results.fundamental.change + results.integrated.change) / 4;
+
+                // 计算一致性（四个模型方向是否一致且幅度接近）
+                const directions = [
+                    results.xgboost.change >= 0 ? 1 : -1,
+                    results.macro.change >= 0 ? 1 : -1,
+                    results.fundamental.change >= 0 ? 1 : -1,
+                    results.integrated.change >= 0 ? 1 : -1
+                ];
+                const sameDirection = directions.every(d => d === directions[0]);
+
+                // 检查幅度是否接近（标准差小于平均值的30%）
+                const changes = [results.xgboost.change, results.macro.change, results.fundamental.change, results.integrated.change];
+                const avgChangeAbs = Math.abs(avgChange);
+                const variance = changes.reduce((sum, val) => sum + Math.pow(val - avgChange, 2), 0) / changes.length;
+                const stdDev = Math.sqrt(variance);
+                const similarMagnitude = avgChangeAbs === 0 || (stdDev / avgChangeAbs) < 0.3;
+
+                const consensus = (sameDirection && similarMagnitude) ? '高度一致' : '存在分歧';
+
+                results.ensemble = {
+                    price: avgPrice,
+                    change: avgChange,
+                    direction: avgChange >= 0 ? '看涨' : '看跌',
+                    consensus: consensus
+                };
+            } else if (results.xgboost && results.macro && results.fundamental) {
+                // 如果集成系统预测不可用，使用三个传统模型
                 const avgPrice = (results.xgboost.price + results.macro.price + results.fundamental.price) / 3;
                 const avgChange = (results.xgboost.change + results.macro.change + results.fundamental.change) / 3;
 
-                // 计算一致性（三个模型方向是否一致）
                 const directions = [
                     results.xgboost.change >= 0 ? 1 : -1,
                     results.macro.change >= 0 ? 1 : -1,
                     results.fundamental.change >= 0 ? 1 : -1
                 ];
                 const sameDirection = directions.every(d => d === directions[0]);
-                const consensus = sameDirection ? '高度一致' : '存在分歧';
+
+                const changes = [results.xgboost.change, results.macro.change, results.fundamental.change];
+                const avgChangeAbs = Math.abs(avgChange);
+                const variance = changes.reduce((sum, val) => sum + Math.pow(val - avgChange, 2), 0) / changes.length;
+                const stdDev = Math.sqrt(variance);
+                const similarMagnitude = avgChangeAbs === 0 || (stdDev / avgChangeAbs) < 0.3;
+
+                const consensus = (sameDirection && similarMagnitude) ? '高度一致' : '存在分歧';
 
                 results.ensemble = {
                     price: avgPrice,
@@ -1925,6 +2063,62 @@ HTML_TEMPLATE = """
             }
 
             return results;
+        }
+
+        // 加载集成预测数据
+        async function loadIntegratedPrediction() {
+            try {
+                const response = await fetch('/api/integrated-prediction');
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('获取集成预测失败:', data.error);
+                    return null;
+                }
+
+                // 更新增强系统预测
+                if (data.predictions && data.predictions.risk_adjusted) {
+                    const enhanced = data.predictions.risk_adjusted;
+                    const enhancedPrice = document.getElementById('enhancedPrice');
+                    const enhancedChange = document.getElementById('enhancedChange');
+
+                    if (enhancedPrice) {
+                        enhancedPrice.textContent = `¥${enhanced.price.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
+                    }
+                    if (enhancedChange) {
+                        const change = enhanced.return_pct || 0;
+                        enhancedChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                        enhancedChange.style.color = change >= 0 ? '#16a34a' : '#dc2626';
+                    }
+                }
+
+                // 更新集成系统预测
+                if (data.final_prediction) {
+                    const integrated = data.final_prediction;
+                    const integratedPrice = document.getElementById('integratedPrice');
+                    const integratedChange = document.getElementById('integratedChange');
+
+                    if (integratedPrice) {
+                        integratedPrice.textContent = `¥${integrated.price.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
+                    }
+                    if (integratedChange) {
+                        const change = integrated.return_pct || 0;
+                        integratedChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                        integratedChange.style.color = change >= 0 ? '#667eea' : '#dc2626';
+                    }
+
+                    // 返回集成预测数据供综合预测使用
+                    return {
+                        price: integrated.price,
+                        change: integrated.return_pct
+                    };
+                }
+
+                return null;
+            } catch (error) {
+                console.error('加载集成预测失败:', error);
+                return null;
+            }
         }
 
         // 更新单模型结果
@@ -4078,6 +4272,96 @@ def delete_prediction_by_date(prediction_date):
         return jsonify({'success': False, 'message': f'删除失败: {str(e)}'})
 
 
+@app.route('/integrated_prediction.html')
+def integrated_prediction_page():
+    """集成预测系统页面"""
+    return send_file('integrated_prediction.html')
+
+
+@app.route('/api/integrated-prediction')
+def get_integrated_prediction():
+    """获取集成预测数据"""
+    try:
+        from run_integrated_prediction import IntegratedPredictionSystem
+        import json
+        from datetime import datetime
+        import pandas as pd
+        
+        print("📡 生成集成预测数据...")
+        
+        # 创建集成预测系统
+        system = IntegratedPredictionSystem()
+        
+        # 执行预测
+        result = system.predict_with_integration(horizon=5)
+        
+        # 计算日涨跌幅（从数据中获取）
+        price_change_1d = 0.0
+        try:
+            current_data = system.data_mgr.get_full_data(days=5)
+            if len(current_data) >= 2:
+                price_change_1d = ((current_data.iloc[-1]['close'] - current_data.iloc[-2]['close']) / current_data.iloc[-2]['close']) * 100
+        except:
+            price_change_1d = 0.0
+        
+        # JSON序列化辅助函数
+        def json_serialize(obj):
+            if isinstance(obj, (int, float, str, bool, type(None))):
+                return obj
+            elif isinstance(obj, (pd.DataFrame, pd.Series)):
+                return None  # 过滤掉DataFrame和Series
+            elif hasattr(obj, 'isoformat'):
+                return obj.isoformat()
+            elif hasattr(obj, '__dict__'):
+                return str(obj)
+            else:
+                return str(obj)
+        
+        # 清理enhanced_data
+        enhanced_data_clean = json.loads(json.dumps(result['enhanced_data'], default=json_serialize))
+        
+        # 清理news_list中的复杂对象
+        if 'news_sentiment' in enhanced_data_clean and 'news_list' in enhanced_data_clean['news_sentiment']:
+            for news in enhanced_data_clean['news_sentiment']['news_list']:
+                if 'sentiment_score' in news:
+                    news['sentiment_score'] = float(news['sentiment_score']) if isinstance(news['sentiment_score'], (int, float)) else 0.0
+        
+        # 格式化响应
+        response = {
+            'timestamp': datetime.now().isoformat(),
+            'current_price': float(result['current_price']),
+            'price_change_1d': round(price_change_1d, 2),
+            'market_state': result['market_state'],
+            'predictions': {
+                'xgboost': result['models']['xgboost'],
+                'weighted': result['weighted_prediction'],
+                'risk_adjusted': result['risk_adjusted_prediction']
+            },
+            'final_prediction': result['final_prediction'],
+            'enhanced_data': enhanced_data_clean,
+            'risk_signals': result['risk_signals'],
+            'confidence_level': result['confidence_level'],
+            'prediction_range': {
+                'lower': float(result['final_prediction']['lower_bound']),
+                'upper': float(result['final_prediction']['upper_bound'])
+            },
+            'recommendation': result['recommendation'],
+            'error': None
+        }
+        
+        print("✅ 集成预测数据生成完成")
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"❌ 生成集成预测失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        })
+
+
 @app.route('/comex-data')
 def get_comex_data():
     """获取上期所铜价日内波动数据（使用真实数据）"""
@@ -4153,7 +4437,7 @@ def get_comex_data():
 if __name__ == '__main__':
     print("🚀 铜价预测系统 v3 - Web服务器启动（多模型版本）")
     print("📱 本地访问: http://localhost:8001")
-    print("🌐 局域网访问: http://<本机IP>:8001")
+    print("🌐 局域网访问: http://<本机IP>:8002")
     print("📡 可以在手机浏览器中访问上述地址")
     print("⏹ 按 Ctrl+C 停止服务器")
     print()
@@ -4161,6 +4445,6 @@ if __name__ == '__main__':
     # 运行Flask服务器
     app.run(
         host='0.0.0.0',  # 允许外部访问
-        port=8001,
+        port=8002,
         debug=True
     )
