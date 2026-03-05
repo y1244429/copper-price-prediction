@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>铜价预测系统 v2 - 分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+        .stat-card h3 {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .stat-card .change {
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+        .change.positive {
+            color: #10b981;
+        }
+        .change.negative {
+            color: #ef4444;
+        }
+        .section {
+            padding: 30px;
+            border-bottom: 1px solid #eee;
+        }
+        .section h2 {
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section h2::before {
+            content: '';
+            width: 5px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 3px;
+        }
+        .prediction-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+        .prediction-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(240, 147, 251, 0.3);
+        }
+        .prediction-card.medium-term {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            box-shadow: 0 10px 30px rgba(79, 172, 254, 0.3);
+        }
+        .prediction-card h3 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+        .prediction-card .price {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .prediction-card .trend {
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+        .features-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .feature-item {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .feature-item::before {
+            content: '▸';
+            color: #667eea;
+            font-weight: bold;
+        }
+        .chart-container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #666;
+        }
+        .footer .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 10px;
+            display: inline-block;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 铜价预测系统 v2</h1>
+            <p>分析报告生成时间: {{ generation_time }}</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>当前价格</h3>
+                <div class="value">¥{{ current_price:,.2f }}</div>
+                <div class="change {{ 'positive' if price_change_1d >= 0 else 'negative' }}">
+                    {{ price_change_1d:+.2f}}% (日涨跌)
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>周涨跌</h3>
+                <div class="value {{ 'positive' if price_change_1w >= 0 else 'negative' }}">
+                    {{ price_change_1w:+.2f}}%
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>月涨跌</h3>
+                <div class="value {{ 'positive' if price_change_1m >= 0 else 'negative' }}">
+                    {{ price_change_1m:+.2f}}%
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>20日波动率</h3>
+                <div class="value">{{ volatility_20d:.2f}}%</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📈 价格预测</h2>
+            <div class="prediction-grid">
+                <div class="prediction-card">
+                    <h3>短期预测 (5天)</h3>
+                    <div class="price">¥{{ short_pred_price:,.2f }}</div>
+                    <div class="trend {{ 'positive' if short_pred_return >= 0 else 'negative' }}">
+                        {{ short_pred_return:+.2f}}% {{ '📈' if short_pred_return >= 0 else '📉' }}
+                    </div>
+                </div>
+                <div class="prediction-card medium-term">
+                    <h3>中期预测 (30天)</h3>
+                    <div class="price">¥{{ medium_pred_price:,.2f }}</div>
+                    <div class="trend {{ 'positive' if medium_pred_return >= 0 else 'negative' }}">
+                        {{ medium_pred_return:+.2f}}% {{ '📈' if medium_pred_return >= 0 else '📉' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔍 关键驱动因子</h2>
+            <div class="features-list">
+                {% for feature in top_features %}
+                <div class="feature-item">{{ feature }}</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>⚡ 增强系统预测（新增）</h2>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 20px;">
+                <h4 style="margin-bottom: 10px; color: #666;">市场状态</h4>
+                <p style="font-size: 1.2em; font-weight: bold; color: {{ market_state_color }}">
+                    {{ market_state }} ({{ market_state_desc }})
+                </p>
+            </div>
+            <div class="prediction-grid">
+                <div class="prediction-card">
+                    <h3>短期预测 (5天)</h3>
+                    <div class="price">¥{{ enhanced_5d }}</div>
+                    <div class="trend {{ enhanced_5d_trend_class }}">
+                        {{ enhanced_5d_return }}% {{ enhanced_5d_emoji }}
+                    </div>
+                </div>
+                <div class="prediction-card medium-term">
+                    <h3>中期预测 (30天)</h3>
+                    <div class="price">¥{{ enhanced_30d }}</div>
+                    <div class="trend {{ enhanced_30d_trend_class }}">
+                        {{ enhanced_30d_return }}% {{ enhanced_30d_emoji }}
+                    </div>
+                </div>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-top: 20px;">
+                <h4 style="margin-bottom: 15px; color: #666;">模型权重</h4>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                    <div style="background: white; padding: 15px; border-radius: 10px; text-align: center;">
+                        <div style="color: #667eea; font-weight: bold;">XGBoost</div>
+                        <div style="font-size: 1.5em; font-weight: bold; color: #333;">{{ xgboost_weight }}%</div>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 10px; text-align: center;">
+                        <div style="color: #764ba2; font-weight: bold;">宏观</div>
+                        <div style="font-size: 1.5em; font-weight: bold; color: #333;">{{ macro_weight }}%</div>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 10px; text-align: center;">
+                        <div style="color: #f5576c; font-weight: bold;">基本面</div>
+                        <div style="font-size: 1.5em; font-weight: bold; color: #333;">{{ fundamental_weight }}%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🎯 集成系统预测（新增）</h2>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-bottom: 20px;">
+                <h4 style="margin-bottom: 10px; color: #666;">置信度</h4>
+                <p style="font-size: 1.2em; font-weight: bold; color: #333;">{{ confidence_level }}</p>
+            </div>
+            <div class="prediction-grid">
+                <div class="prediction-card">
+                    <h3>短期预测 (5天)</h3>
+                    <div class="price">¥{{ integrated_5d }}</div>
+                    <div class="trend {{ integrated_5d_trend_class }}">
+                        {{ integrated_5d_return }}% {{ integrated_5d_emoji }}
+                    </div>
+                </div>
+                <div class="prediction-card medium-term">
+                    <h3>中期预测 (30天)</h3>
+                    <div class="price">¥{{ integrated_30d }}</div>
+                    <div class="trend {{ integrated_30d_trend_class }}">
+                        {{ integrated_30d_return }}% {{ integrated_30d_emoji }}
+                    </div>
+                </div>
+            </div>
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 15px; margin-top: 20px;">
+                <h4 style="margin-bottom: 15px; color: #666;">风险调整详情</h4>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                        <strong>调整因子:</strong> {{ adjustment_factor }}<br>
+                        <small style="color: #666;">{{ adjustment_factor_desc }}</small>
+                    </li>
+                    {{ risk_adjustment_details }}
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 模型性能</h2>
+            <div class="chart-container">
+                <canvas id="performanceChart"></canvas>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>铜价预测系统 v2 - 由AI驱动</p>
+            <div class="warning">
+                ⚠️ 风险提示: 本报告由AI模型生成,仅供参考,不构成投资建议。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 性能图表
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+        const performanceChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['RMSE', 'MAE', '总收益率', '夏普比率'],
+                datasets: [{
+                    label: '模型指标',
+                    data: [{{ rmse }}, {{ mae }}, {{ total_return }}, {{ sharpe_ratio }}],
+                    backgroundColor: [
+                        'rgba(102, 126, 234, 0.8)',
+                        'rgba(118, 75, 162, 0.8)',
+                        'rgba(16, 185, 129, 0.8)',
+                        'rgba(240, 147, 251, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(102, 126, 234, 1)',
+                        'rgba(118, 75, 162, 1)',
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(240, 147, 251, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'XGBoost模型性能指标',
+                        font: {
+                            size: 16
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

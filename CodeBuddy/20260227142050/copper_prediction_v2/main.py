@@ -652,7 +652,9 @@ class CopperPredictionSystem:
         # 生成HTML报告
         html_report_file = self._generate_html_report(
             stats, short_pred, medium_pred, top_features, model_metrics,
-            macro_pred, fundamental_pred, report_date
+            macro_pred, fundamental_pred, report_date,
+            integrated_preds.get('enhanced_system') if integrated_preds else None,
+            integrated_preds
         )
         print(f"✓ HTML报告已保存: {html_report_file}")
 
@@ -872,7 +874,9 @@ class CopperPredictionSystem:
                 'weights': prediction_5d.get('weights', {}),
                 'risk_adjustment': {
                     'confidence_level': prediction_5d.get('confidence_level', 'unknown'),
-                    'adjustment_details': prediction_5d.get('risk_adjustment', {}).get('adjustment_details', [])
+                    'adjustment_factor': risk_adjusted_pred_5d.get('adjustment_factor', 1.0) if isinstance(risk_adjusted_pred_5d, dict) else 1.0,
+                    'adjustment_factor_desc': '风险调整因子：' + str(risk_adjusted_pred_5d.get('adjustment_factor', 1.0) if isinstance(risk_adjusted_pred_5d, dict) else '1.0'),
+                    'adjustment_details': risk_adjusted_pred_5d.get('adjustment_details', []) if isinstance(risk_adjusted_pred_5d, dict) else []
                 }
             }
             
@@ -906,7 +910,8 @@ class CopperPredictionSystem:
             }
 
     def _generate_html_report(self, stats, short_pred, medium_pred, top_features, model_metrics,
-                             macro_pred=None, fundamental_pred=None, report_date=None) -> str:
+                             macro_pred=None, fundamental_pred=None, report_date=None,
+                             enhanced_preds=None, integrated_preds=None) -> str:
         """生成HTML格式的报告"""
         from pathlib import Path
 
@@ -949,6 +954,109 @@ class CopperPredictionSystem:
         else:
             html_content = html_content.replace('{{ fundamental_pred_price }}', "N/A")
             html_content = html_content.replace('{{ fundamental_pred_return }}', "N/A")
+
+        # 添加增强系统预测信息
+        if enhanced_preds:
+            enhanced_5d_value = enhanced_preds.get('5d', 0)
+            enhanced_5d_return = enhanced_preds.get('5d_return', 0)
+            enhanced_30d_value = enhanced_preds.get('30d', 0)
+            enhanced_30d_return = enhanced_preds.get('30d_return', 0)
+
+            html_content = html_content.replace('{{ enhanced_5d }}', f"{enhanced_5d_value:,.2f}")
+            html_content = html_content.replace('{{ enhanced_5d_return }}', f"{enhanced_5d_return:+.2f}")
+            html_content = html_content.replace('{{ enhanced_5d_trend_class }}', 'positive' if enhanced_5d_return >= 0 else 'negative')
+            html_content = html_content.replace('{{ enhanced_5d_emoji }}', '📈' if enhanced_5d_return >= 0 else '📉')
+            html_content = html_content.replace('{{ enhanced_30d }}', f"{enhanced_30d_value:,.2f}")
+            html_content = html_content.replace('{{ enhanced_30d_return }}', f"{enhanced_30d_return:+.2f}")
+            html_content = html_content.replace('{{ enhanced_30d_trend_class }}', 'positive' if enhanced_30d_return >= 0 else 'negative')
+            html_content = html_content.replace('{{ enhanced_30d_emoji }}', '📈' if enhanced_30d_return >= 0 else '📉')
+        else:
+            html_content = html_content.replace('{{ enhanced_5d }}', "N/A")
+            html_content = html_content.replace('{{ enhanced_5d_return }}', "0.00")
+            html_content = html_content.replace('{{ enhanced_5d_trend_class }}', 'positive')
+            html_content = html_content.replace('{{ enhanced_5d_emoji }}', '📈')
+            html_content = html_content.replace('{{ enhanced_30d }}', "N/A")
+            html_content = html_content.replace('{{ enhanced_30d_return }}', "0.00")
+            html_content = html_content.replace('{{ enhanced_30d_trend_class }}', 'positive')
+            html_content = html_content.replace('{{ enhanced_30d_emoji }}', '📈')
+
+        # 添加集成系统预测信息
+        if integrated_preds:
+            # 提取集成系统预测数据
+            integrated_system = integrated_preds.get('integrated_system', {})
+            integrated_5d_value = integrated_system.get('5d', 0)
+            integrated_5d_return = integrated_system.get('5d_return', 0)
+            integrated_30d_value = integrated_system.get('30d', 0)
+            integrated_30d_return = integrated_system.get('30d_return', 0)
+
+            html_content = html_content.replace('{{ integrated_5d }}', f"{integrated_5d_value:,.2f}")
+            html_content = html_content.replace('{{ integrated_5d_return }}', f"{integrated_5d_return:+.2f}")
+            html_content = html_content.replace('{{ integrated_5d_trend_class }}', 'positive' if integrated_5d_return >= 0 else 'negative')
+            html_content = html_content.replace('{{ integrated_5d_emoji }}', '📈' if integrated_5d_return >= 0 else '📉')
+            html_content = html_content.replace('{{ integrated_30d }}', f"{integrated_30d_value:,.2f}")
+            html_content = html_content.replace('{{ integrated_30d_return }}', f"{integrated_30d_return:+.2f}")
+            html_content = html_content.replace('{{ integrated_30d_trend_class }}', 'positive' if integrated_30d_return >= 0 else 'negative')
+            html_content = html_content.replace('{{ integrated_30d_emoji }}', '📈' if integrated_30d_return >= 0 else '📉')
+
+            # 风险调整详情
+            risk_adjustment = integrated_preds.get('risk_adjustment', {})
+            confidence_level = risk_adjustment.get('confidence_level', 'unknown')
+            adjustment_factor = risk_adjustment.get('adjustment_factor', 1.0)
+            adjustment_factor_desc = risk_adjustment.get('adjustment_factor_desc', '')
+
+            html_content = html_content.replace('{{ confidence_level }}', str(confidence_level))
+            html_content = html_content.replace('{{ adjustment_factor }}', f"{adjustment_factor:.4f}")
+            html_content = html_content.replace('{{ adjustment_factor_desc }}', adjustment_factor_desc)
+
+            # 风险调整详情列表
+            adjustment_details = risk_adjustment.get('adjustment_details', [])
+            if adjustment_details:
+                details_html = ''.join([f'                    <li style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">{detail}</li>\n' for detail in adjustment_details])
+                html_content = html_content.replace('{{ risk_adjustment_details }}', details_html.strip())
+            else:
+                html_content = html_content.replace('{{ risk_adjustment_details }}', '<li style="padding: 8px 0;">无风险调整详情</li>')
+
+            # 市场状态
+            market_state = integrated_preds.get('market_state', 'neutral')
+            market_state_desc = {
+                'risky': '高风险',
+                'neutral': '中性',
+                'stable': '稳定'
+            }.get(market_state, '未知')
+            market_state_color = 'red' if market_state == 'risky' else 'green'
+
+            html_content = html_content.replace('{{ market_state }}', market_state)
+            html_content = html_content.replace('{{ market_state_desc }}', market_state_desc)
+            html_content = html_content.replace('{{ market_state_color }}', market_state_color)
+
+            # 模型权重
+            model_weights = integrated_preds.get('weights', {})
+            xgboost_weight = model_weights.get('xgboost', 0)
+            macro_weight = model_weights.get('macro', 0)
+            fundamental_weight = model_weights.get('fundamental', 0)
+
+            html_content = html_content.replace('{{ xgboost_weight }}', str(int(xgboost_weight * 100)))
+            html_content = html_content.replace('{{ macro_weight }}', str(int(macro_weight * 100)))
+            html_content = html_content.replace('{{ fundamental_weight }}', str(int(fundamental_weight * 100)))
+        else:
+            html_content = html_content.replace('{{ integrated_5d }}', "N/A")
+            html_content = html_content.replace('{{ integrated_5d_return }}', "0.00")
+            html_content = html_content.replace('{{ integrated_5d_trend_class }}', 'positive')
+            html_content = html_content.replace('{{ integrated_5d_emoji }}', '📈')
+            html_content = html_content.replace('{{ integrated_30d }}', "N/A")
+            html_content = html_content.replace('{{ integrated_30d_return }}', "0.00")
+            html_content = html_content.replace('{{ integrated_30d_trend_class }}', 'positive')
+            html_content = html_content.replace('{{ integrated_30d_emoji }}', '📈')
+            html_content = html_content.replace('{{ confidence_level }}', "unknown")
+            html_content = html_content.replace('{{ adjustment_factor }}', "1.0000")
+            html_content = html_content.replace('{{ adjustment_factor_desc }}', "")
+            html_content = html_content.replace('{{ risk_adjustment_details }}', '<li style="padding: 8px 0;">无集成系统数据</li>')
+            html_content = html_content.replace('{{ market_state }}', "unknown")
+            html_content = html_content.replace('{{ market_state_desc }}', "未知")
+            html_content = html_content.replace('{{ market_state_color }}', "green")
+            html_content = html_content.replace('{{ xgboost_weight }}', "0")
+            html_content = html_content.replace('{{ macro_weight }}', "0")
+            html_content = html_content.replace('{{ fundamental_weight }}', "0")
 
         # 处理特征列表
         features_html = ''.join([f'                <div class="feature-item">{feature}</div>\n' for feature in top_features])
