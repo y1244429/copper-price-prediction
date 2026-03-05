@@ -119,11 +119,9 @@ class AKShareDataSource:
 
             print(f"正在从AKShare获取铜价数据 ({start_date} 至 {end_date})...")
 
-            # 尝试多个数据源
+            # 尝试多个数据源 - 优先使用中国上期所数据
             data_sources = [
                 ("上期所铜期货（主力）", self._fetch_shfe_copper),
-                ("COMEX铜期货", self._fetch_comex_copper),
-                ("伦敦金属交易所铜", self._fetch_lme_copper),
                 ("备用铜期货数据", self._fetch_copper_fallback)
             ]
 

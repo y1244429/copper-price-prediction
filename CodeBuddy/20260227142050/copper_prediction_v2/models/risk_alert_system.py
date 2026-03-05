@@ -52,8 +52,8 @@ class AlertLevel(Enum):
 class AlertThresholds:
     """预警阈值配置"""
     # 价格波动类
-    volatility_level_2: float = 35.0  # 日内波动率二级阈值（年化%）
-    volatility_level_3: float = 50.0  # 日内波动率三级阈值
+    volatility_level_2: float = 35.0  # 20日年化波动率二级阈值（%）
+    volatility_level_3: float = 50.0  # 20日年化波动率三级阈值（%）
     price_deviation_level_2: float = 8.0  # 价格偏离度二级阈值（%）
     price_deviation_level_3: float = 15.0  # 价格偏离度三级阈值
     gap_up_level_2: float = 2.0  # 跳空二级阈值（%）
@@ -151,7 +151,7 @@ class CopperRiskMonitor:
         if len(data) < 20:
             return alerts
 
-        # 1. 日内波动率（20日滚动年化波动率）
+        # 1. 20日年化波动率预警
         returns = data['close'].pct_change()
         volatility = returns.rolling(20).std() * np.sqrt(252) * 100  # 年化%
         latest_volatility = volatility.iloc[-1]
@@ -160,10 +160,10 @@ class CopperRiskMonitor:
             alerts.append(AlertSignal(
                 alert_level=AlertLevel.LEVEL_3,
                 signal_type="价格行为",
-                indicator_name="日内波动率",
+                indicator_name="20日年化波动率",
                 current_value=latest_volatility,
                 threshold=self.thresholds.volatility_level_3,
-                message=f"日内波动率达到{latest_volatility:.1f}%，超过三级阈值{self.thresholds.volatility_level_3}%，市场情绪失控",
+                message=f"20日年化波动率达到{latest_volatility:.1f}%，超过三级阈值{self.thresholds.volatility_level_3}%，市场情绪失控",
                 timestamp=datetime.now(),
                 action_required=[
                     "立即评估所有持仓风险敞口",
@@ -176,10 +176,10 @@ class CopperRiskMonitor:
             alerts.append(AlertSignal(
                 alert_level=AlertLevel.LEVEL_2,
                 signal_type="价格行为",
-                indicator_name="日内波动率",
+                indicator_name="20日年化波动率",
                 current_value=latest_volatility,
                 threshold=self.thresholds.volatility_level_2,
-                message=f"日内波动率达到{latest_volatility:.1f}%，超过二级阈值{self.thresholds.volatility_level_2}%，市场情绪高涨",
+                message=f"20日年化波动率达到{latest_volatility:.1f}%，超过二级阈值{self.thresholds.volatility_level_2}%，市场情绪高涨",
                 timestamp=datetime.now(),
                 action_required=[
                     "密切监控市场波动",

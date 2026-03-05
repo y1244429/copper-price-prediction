@@ -35,9 +35,11 @@ except ImportError:
 class FundamentalConfig:
     """基本面模型配置"""
     # 模型参数
-    model_type: str = 'var'  # 'var' 或 'sem'
-    var_maxlags: int = 2  # VAR模型最大滞后阶数
-    var_ic: str = 'aic'  # 信息准则: 'aic', 'bic', 'hqic'
+    model_type: str = 'ridge'  # 改用'ridge'模型,更稳定
+
+    # Ridge模型参数
+    ridge_alpha: float = 1.0  # Ridge正则化强度
+    random_state: int = 42  # 固定随机种子
 
     # 供需权重
     supply_weight: float = 0.4
@@ -82,6 +84,8 @@ class FundamentalDataProcessor:
         self.scaler = StandardScaler()
         self.cost_curve = None
         self.disruption_index = None
+        # 固定随机数种子,确保基本面特征生成稳定
+        np.random.seed(42)
 
     def process_supply_demand(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -128,6 +132,9 @@ class FundamentalDataProcessor:
         - C1成本（现金成本）90分位线
         - 完全成本75分位线
         """
+        # 在方法内部重新设置随机种子，确保结果可重复
+        np.random.seed(42)
+
         result = df.copy()
 
         # 如果没有提供成本数据，使用价格估算
@@ -165,12 +172,14 @@ class FundamentalDataProcessor:
         - 品位下滑
         - 政策风险
         """
+        # 在方法内部重新设置随机种子，确保结果可重复
+        np.random.seed(42)
+
         result = df.copy()
 
         # 如果没有提供干扰数据，使用模拟数据
         if 'disruption_index' not in df.columns:
             # 基于随机波动生成干扰指数（0-1）
-            np.random.seed(42)
             result['disruption_index'] = np.random.uniform(0, 0.3, len(df))
             result['disruption_chile'] = np.random.uniform(0, 0.2, len(df))
             result['disruption_peru'] = np.random.uniform(0, 0.15, len(df))
@@ -395,27 +404,12 @@ class FundamentalModel:
 
         X_scaled = self.scaler.fit_transform(X)
 
-        # 训练模型
-        if self.config.model_type == 'var' and STATSMODELS_AVAILABLE:
-            self.model = self._train_var(X_scaled, y)
-        else:
-            # 使用回归模型作为备选
-            self.model = self._train_regression(X_scaled, y)
+        # 训练Ridge模型(更稳定)
+        self.model = self._train_ridge(X_scaled, y)
 
         # 计算训练指标
-        if self.config.model_type == 'var' and STATSMODELS_AVAILABLE and hasattr(self.model, 'forecast'):
-            # VAR模型预测
-            try:
-                y_pred = self.model.forecast(y=np.column_stack([y, X_scaled])[-self.config.var_maxlags:], steps=len(y)-self.config.var_maxlags)[:, 0]
-                y_actual = y[self.config.var_maxlags:]
-            except:
-                # VAR预测失败，使用简单预测
-                y_pred = self.model.fittedvalues[:, 0][-len(y):]
-                y_actual = y
-        else:
-            # 回归模型预测
-            y_pred = self.model.predict(X_scaled)
-            y_actual = y
+        y_pred = self.model.predict(X_scaled)
+        y_actual = y
 
         metrics = {
             'rmse': np.sqrt(mean_squared_error(y_actual, y_pred)),
@@ -449,51 +443,18 @@ class FundamentalModel:
 
         return selected[:15] if len(selected) > 15 else selected  # 限制特征数量
 
-    def _train_var(self, X: np.ndarray, y: np.ndarray):
-        """训练VAR模型"""
-        try:
-            # 构建数据矩阵（包括目标变量）
-            data = np.column_stack([y, X])
-
-            # 移除NaN值
-            data = data[~np.isnan(data).any(axis=1)]
-
-            if len(data) < 100:
-                raise ValueError("有效数据不足，无法训练VAR模型")
-
-            # 创建VAR模型
-            model = VAR(data)
-
-            # 选择最优滞后阶数
-            try:
-                lag_order = model.select_order(maxlags=min(self.config.var_maxlags, 2))
-                optimal_lag = getattr(lag_order, self.config.var_ic, 1)
-                optimal_lag = max(1, optimal_lag)  # 确保至少为1
-            except:
-                optimal_lag = 1
-
-            # 拟合模型
-            fitted_model = model.fit(optimal_lag)
-
-            return fitted_model
-
-        except Exception as e:
-            print(f"  VAR模型训练失败，切换到回归模型: {e}")
-            # VAR失败时使用回归模型作为备选
-            return self._train_regression(X, y)
-
-    def _train_regression(self, X: np.ndarray, y: np.ndarray):
-        """训练回归模型"""
+    def _train_ridge(self, X: np.ndarray, y: np.ndarray):
+        """训练Ridge回归模型(稳定)"""
         # 移除NaN值
         mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
         X_clean = X[mask]
         y_clean = y[mask]
 
-        model = RandomForestRegressor(
-            n_estimators=200,
-            max_depth=10,
-            min_samples_split=10,
-            random_state=42
+        # 使用Ridge回归,固定随机种子确保结果稳定
+        model = Ridge(
+            alpha=self.config.ridge_alpha,
+            random_state=self.config.random_state,
+            max_iter=1000
         )
         model.fit(X_clean, y_clean)
         return model
@@ -528,24 +489,75 @@ class FundamentalModel:
         X_latest = X_scaled[-1:]
         latest_features = df_model.iloc[-1].to_dict()
 
-        # 预测
-        if self.config.model_type == 'var' and STATSMODELS_AVAILABLE and hasattr(self.model, 'forecast'):
-            # VAR模型多步预测
-            try:
-                forecast = self.model.forecast(y=np.column_stack([df['close'].iloc[-self.config.var_maxlags:].values, X_scaled[-self.config.var_maxlags:]]), steps=1)
-                predicted_price = forecast[0, 0]
-                predicted_change = predicted_price - df['close'].iloc[-1]
-            except:
-                # VAR预测失败，使用回归预测
-                predicted_price = self.model.predict(X_latest)[0]
-                predicted_change = predicted_price - df['close'].iloc[-1]
-        else:
-            # 回归模型预测
-            predicted_price = self.model.predict(X_latest)[0]
-            predicted_change = predicted_price - df['close'].iloc[-1]
-
-        # 计算预测结果
+        # 获取当前价格
         current_price = df['close'].iloc[-1]
+
+        # 使用Ridge模型预测
+        predicted_price_raw = self.model.predict(X_latest)[0]
+        predicted_change = predicted_price_raw - current_price
+
+        # 根据预测周期调整预测值
+        # 基本面模型：使用供需平衡和成本支撑进行长期趋势预测
+        if horizon > 0:
+            # 计算历史收益率
+            returns = df['close'].pct_change().dropna()
+            return_median = returns.median()
+            return_std = returns.std()
+
+            # 计算预测的日收益率
+            daily_return = predicted_change / current_price
+
+            # 基本面特征影响预测
+            fundamental_bias = 0
+
+            # 1. 供需平衡影响
+            if 'gap_pct' in latest_features:
+                gap = latest_features['gap_pct']
+                # 供需缺口对价格有长期影响
+                fundamental_bias += gap * 2.0  # 1%的缺口影响2%的价格
+
+            # 2. 库存变化影响
+            if 'inventory_zscore' in latest_features:
+                inv_z = latest_features['inventory_zscore']
+                # 库存高于正常水平压制价格，低于则支撑价格
+                fundamental_bias -= inv_z * 0.5  # 1个标准差的Z值影响0.5%
+
+            # 3. 成本支撑影响
+            if 'price_to_c1_cost' in latest_features:
+                cost_ratio = latest_features['price_to_c1_cost']
+                # 价格低于成本时，成本支撑强力
+                if cost_ratio < 1.0:
+                    fundamental_bias += (1.0 - cost_ratio) * 3.0  # 向成本回归
+
+            # 4. 干扰风险影响
+            if 'supply_impact' in latest_features:
+                disruption = latest_features['supply_impact']
+                fundamental_bias += disruption * 5.0  # 干扰影响价格
+
+            # 基本面模型：趋势性更强，使用较小的衰减系数
+            # 基本面因素的影响可以持续6个月
+            daily_fundamental_return = (daily_return * 0.2) + (fundamental_bias / 180.0)
+
+            # 使用简单的线性累积，而不是复利
+            # 避免预测值过大，对超长期预测应用衰减
+            decay_factor = 1.0
+            if horizon > 90:
+                decay_factor = np.sqrt(90 / horizon)  # 对90天以上的预测应用衰减
+            predicted_return = daily_fundamental_return * horizon * decay_factor
+
+            # 基本面模型允许更大的偏离，但仍然需要合理约束
+            max_return = return_median + 3 * return_std * np.sqrt(min(horizon, 120))
+            min_return = return_median - 3 * return_std * np.sqrt(min(horizon, 120))
+            predicted_return = np.clip(predicted_return, min_return, max_return)
+
+            # 注释掉硬性限制,让模型自然预测
+            # 基本面模型计算出的预测应该被信任
+            # max_safe_return = 0.50  # 最大50%总收益率
+            # min_safe_return = -0.50  # 最小-50%总收益率
+            # predicted_return = np.clip(predicted_return, min_safe_return, max_safe_return)
+
+            predicted_change = current_price * predicted_return
+
         predicted_price = current_price + predicted_change
         predicted_return = predicted_change / current_price
 
@@ -756,12 +768,77 @@ class MacroFactorModel:
 
         X_scaled = self.scaler.transform(X)
 
-        # 预测
-        predicted_price = self.model.predict(X_scaled)[0]
-
-        # 计算预测结果
+        # 获取当前价格
         current_price = df['close'].iloc[-1]
-        predicted_change = predicted_price - current_price
+
+        # 预测 - 模型预测的是下一期的价格
+        predicted_price_raw = self.model.predict(X_scaled)[0]
+        predicted_change = predicted_price_raw - current_price
+
+        # 根据预测周期调整预测值
+        # 宏观因子模型：使用宏观指标进行中短期预测
+        if horizon > 0:
+            # 计算历史收益率
+            returns = df['close'].pct_change().dropna()
+            return_median = returns.median()
+            return_std = returns.std()
+
+            # 计算预测的日收益率
+            daily_return = predicted_change / current_price
+
+            # 宏观因子影响预测
+            macro_bias = 0
+
+            # 1. 美元指数影响（负相关，权重0.3）
+            if 'usd_strength' in latest_features:
+                usd_str = latest_features['usd_strength']
+                macro_bias -= usd_str * 30.0 * self.config.usd_weight  # 美元强，铜价弱
+
+            # 2. PMI影响（正相关，权重0.25）
+            if 'pmi_momentum' in latest_features:
+                pmi_mom = latest_features['pmi_momentum']
+                macro_bias += pmi_mom * 0.5 * self.config.pmi_weight  # PMI上升，铜价上升
+
+            # 3. 实际利率影响（负相关，权重0.2）
+            if 'tips_change' in latest_features:
+                rate_change = latest_features['tips_change']
+                macro_bias -= rate_change * 10.0 * self.config.rate_weight  # 利率升，铜价跌
+
+            # 4. 期限结构影响（权重0.25）
+            if 'is_backwardation' in latest_features:
+                is_back = latest_features['is_backwardation']
+                spread = latest_features.get('spread_strength', 0)
+                # Backwardation意味着现货紧张
+                if is_back:
+                    macro_bias += (spread / current_price) * 20.0 * self.config.structure_weight
+                else:
+                    macro_bias -= (spread / current_price) * 10.0 * self.config.structure_weight
+
+            # 宏观模型：影响更直接但衰减更快
+            # 宏观因素的影响通常在1-3个月内较强
+            daily_macro_return = (daily_return * 0.3) + (macro_bias / 90.0)
+
+            # 使用简单的线性累积，而不是复利
+            # 避免预测值过大，对长期预测应用衰减
+            decay_factor = 1.0
+            if horizon > 30:
+                decay_factor = np.sqrt(30 / horizon)  # 对30天以上的预测应用衰减
+            predicted_return = daily_macro_return * horizon * decay_factor
+
+            # 宏观模型使用更紧的约束，因为关注中短期波动
+            max_return = return_median + 2 * return_std * np.sqrt(min(horizon, 60))
+            min_return = return_median - 2 * return_std * np.sqrt(min(horizon, 60))
+            predicted_return = np.clip(predicted_return, min_return, max_return)
+
+            # 注释掉硬性限制,让模型自然预测
+            # ARDL模型计算出的预测应该被信任,不需要硬限制
+            # max_safe_return = 0.15  # 最大15%总收益率
+            # min_safe_return = -0.15  # 最小-15%总收益率
+            # predicted_return = np.clip(predicted_return, min_safe_return, max_safe_return)
+
+            predicted_change = current_price * predicted_return
+
+        predicted_price = current_price + predicted_change
         predicted_return = predicted_change / current_price
 
         # 提取关键指标数值

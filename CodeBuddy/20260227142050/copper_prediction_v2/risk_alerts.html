@@ -421,14 +421,14 @@
             <!-- 波动率显示区域 -->
             <div id="volatilitySection" style="margin-bottom: 30px; display: none;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h3 style="color: #333; margin: 0; font-size: 1.4em;">📈 COMEX铜价波动监测</h3>
+                    <h3 style="color: #333; margin: 0; font-size: 1.4em;">📈 上期所铜价波动监测</h3>
                     <div id="dataSourceBadge" style="padding: 6px 15px; border-radius: 20px; font-size: 0.85em; font-weight: 500;">
                         数据源加载中...
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
                     <div id="intradayCard" style="background: white; padding: 25px; border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                        <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">日内波动率</div>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">最近5天平均值波动率</div>
                         <div style="font-size: 2.5em; font-weight: bold; color: #333;" id="intradayVolatility">--%</div>
                         <div style="margin-top: 10px; font-size: 0.85em; color: #999;" id="intradayStatus">计算中...</div>
                     </div>
@@ -557,22 +557,24 @@
             // 从数据中提取波动率信息
             const volatility = data.volatility || {};
 
-            // 显示数据源标识
-            const dataSourceBadge = document.getElementById('dataSourceBadge');
+            // 检查数据源 - 只显示上期所真实数据，模拟数据不显示
             const dataSource = data.data_source || 'unknown';
-            if (dataSource === 'real') {
-                dataSourceBadge.textContent = '🟢 真实数据';
-                dataSourceBadge.style.background = 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)';
-                dataSourceBadge.style.color = 'white';
-            } else if (dataSource === 'mock') {
-                dataSourceBadge.textContent = '🟡 模拟数据';
-                dataSourceBadge.style.background = 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)';
-                dataSourceBadge.style.color = 'white';
-            } else {
-                dataSourceBadge.textContent = '⚪ 未知数据源';
-                dataSourceBadge.style.background = '#e0e0e0';
-                dataSourceBadge.style.color = '#666';
+            const dataSourceBadge = document.getElementById('dataSourceBadge');
+
+            if (dataSource !== 'real') {
+                // 如果是模拟数据，隐藏波动率区域
+                volatilitySection.style.display = 'none';
+                console.log('数据来源为模拟数据，隐藏波动率显示');
+                return;
             }
+
+            // 显示数据源标识
+            dataSourceBadge.textContent = '🟢 上期所真实数据';
+            dataSourceBadge.style.background = 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)';
+            dataSourceBadge.style.color = 'white';
+
+            // 显示波动率区域
+            volatilitySection.style.display = 'block';
 
             // 日内波动率
             const intradayVol = volatility.intraday || 2.5;

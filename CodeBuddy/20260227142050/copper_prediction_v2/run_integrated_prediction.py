@@ -51,59 +51,65 @@ class IntegratedPredictionSystem:
         print("="*70)
     
     def get_market_state(self, enhanced_data: dict) -> str:
-        """判断市场状态"""
+        """判断市场状态 - 仅基于宏观数据，不依赖新闻情绪"""
         risk_signals = enhanced_data.get('risk_signals', [])
         high_risk_count = sum(1 for s in risk_signals if s.get('level') == 'high')
-        
+
+        # 仅根据风险信号判断市场状态
         if high_risk_count >= 2 or len(risk_signals) >= 4:
             return 'crisis'
-        elif high_risk_count >= 1:
+        elif high_risk_count >= 1 or len(risk_signals) >= 1:
             return 'risky'
-        elif enhanced_data.get('news_sentiment', {}).get('overall_sentiment') == 'positive':
-            return 'bull'
-        elif enhanced_data.get('news_sentiment', {}).get('overall_sentiment') == 'negative':
-            return 'bear'
+        else:
+            # 无风险信号时，基于宏观数据判断
+            macro = enhanced_data.get('macro', {})
+            vix = macro.get('vix', {}).get('value', 19.0)
+            dollar_index = macro.get('dollar_index', {}).get('value', 103.0)
+            pmi = macro.get('pmi', {}).get('value', 50.0)
+
+            # VIX高 = 熊市信号
+            if vix > 22:
+                return 'bear'
+            # 美元指数强 = 熊市信号
+            elif dollar_index > 105:
+                return 'bear'
+            # PMI扩张 = 牛市信号
+            elif pmi > 52:
+                return 'bull'
         return 'normal'
     
     def get_dynamic_weights(self, market_state: str, enhanced_data: dict) -> dict:
-        """动态权重调整"""
+        """动态权重调整 - 基于市场状态，不依赖新闻情绪"""
         weights = self.base_weights.copy()
-        
+
         if market_state == 'crisis':
             # 危机时：降低技术权重，提高宏观权重
             weights['xgboost'] = 0.20
             weights['macro'] = 0.50
             weights['fundamental'] = 0.30
             logger.info("市场状态: 危机，调整权重 - 技术降权，宏观升权")
-        
+
         elif market_state == 'risky':
             # 风险期：略微调整
             weights['xgboost'] = 0.30
             weights['macro'] = 0.45
             weights['fundamental'] = 0.25
             logger.info("市场状态: 风险，调整权重 - 技术降权，宏观升权")
-        
+
         elif market_state == 'bull':
             # 牛市：基本面升权
             weights['xgboost'] = 0.35
             weights['macro'] = 0.30
             weights['fundamental'] = 0.35
             logger.info("市场状态: 牛市，调整权重 - 基本面升权")
-        
+
         elif market_state == 'bear':
             # 熊市：宏观升权
             weights['xgboost'] = 0.30
             weights['macro'] = 0.45
             weights['fundamental'] = 0.25
             logger.info("市场状态: 熊市，调整权重 - 宏观升权")
-        
-        # 突发事件进一步降低技术权重
-        if enhanced_data.get('news_sentiment', {}).get('has_emergency'):
-            weights['xgboost'] *= 0.5
-            total = sum(weights.values())
-            weights = {k: v/total for k, v in weights.items()}
-            logger.warning("检测到突发事件，大幅降低技术模型权重")
-        
+
         return weights
     
     def apply_risk_adjustment(self, prediction: float, enhanced_data: dict) -> dict:
@@ -157,8 +163,8 @@ class IntegratedPredictionSystem:
                     adjustment_details.append(f"高风险(-{(1-adjustment)*100:.0f}%)")
             else:  # medium level
                 if 'Dollar' in signal['indicator']:
-                    # 美元指数偏高 - 适度向下调整
-                    adjustment = 0.96  # 降低4%
+                    # 美元指数偏高 - 加强向下调整力度
+                    adjustment = 0.94  # 降低6%（原来是4%）
                     risk_factor *= adjustment
                     adjustment_details.append(f"美元指数偏高(-{(1-adjustment)*100:.0f}%)")
                 elif 'VIX' in signal['indicator']:
@@ -202,7 +208,8 @@ class IntegratedPredictionSystem:
         
         # 1. 获取当前价格
         try:
-            current_data = self.data_mgr.get_full_data(days=60)
+            # 获取更多数据以满足宏观因子模型的训练需求(至少100条)
+            current_data = self.data_mgr.get_full_data(days=365)
             current_price = current_data.iloc[-1]['close']
         except:
             # 如果获取失败，使用模拟数据
@@ -235,46 +242,84 @@ class IntegratedPredictionSystem:
                 xgboost_price = self.xgb_model.predict(xgboost_data)
                 xgboost_return = (xgboost_price - current_price) / current_price * 100
             else:
-                # 模型未训练，使用技术指标模拟
-                xgboost_return = 2.17  # 基于历史经验
-                xgboost_price = current_price * (1 + xgboost_return / 100)
+                # 模型未训练，基于当前市场趋势动态计算
+                # 计算最近几天的平均涨跌幅
+                if len(current_data) >= 5:
+                    recent_returns = current_data['close'].pct_change().tail(5).dropna()
+                    avg_return = recent_returns.mean() * 100
+                    # 降低波动，使用0.5倍的平均收益率
+                    xgboost_return = avg_return * 0.5
+                    xgboost_price = current_price * (1 + xgboost_return / 100)
+                    logger.info(f"基于最近5天趋势计算: 平均{avg_return:+.2f}%, 预测{xgboost_return:+.2f}%")
+                else:
+                    # 数据不足，使用小幅正向均值回归
+                    xgboost_return = 0.5  # 0.5%小幅正向
+                    xgboost_price = current_price * (1 + xgboost_return / 100)
             logger.info(f"XGBoost预测: ¥{xgboost_price:,.2f} ({xgboost_return:+.2f}%)")
         except Exception as e:
             logger.warning(f"XGBoost预测失败: {e}，使用默认值")
-            xgboost_return = 2.17
+            # 使用基于市场趋势的默认值
+            if len(current_data) >= 3:
+                recent_returns = current_data['close'].pct_change().tail(3).dropna()
+                avg_return = recent_returns.mean() * 100
+                xgboost_return = avg_return * 0.5
+            else:
+                xgboost_return = 0.5
             xgboost_price = current_price * (1 + xgboost_return / 100)
         
         # 宏观模型预测
         macro_price = current_price
         macro_return = 0.0
         try:
-            macro_price = self.macro_model.predict(horizon)
-            macro_return = (macro_price - current_price) / current_price * 100
-            logger.info(f"宏观模型预测: ¥{macro_price:,.2f} ({macro_return:+.2f}%)")
+            # 需要先训练模型
+            self.macro_model.train(current_data)
+            # 宏观因子模型使用90天预测,不管传入的horizon是多少
+            macro_horizon = 90
+            macro_pred = self.macro_model.predict(current_data, horizon=macro_horizon)
+            macro_price = macro_pred['predicted_price']
+            macro_return = macro_pred['predicted_return']
+            logger.info(f"宏观模型预测 ({macro_horizon}天): ¥{macro_price:,.2f} ({macro_return:+.2f}%)")
         except Exception as e:
             logger.warning(f"宏观模型预测失败: {e}，使用默认值")
-            macro_return = 6.13
+            # 基于最近趋势计算，而不是固定6.13%
+            if len(current_data) >= 5:
+                recent_returns = current_data['close'].pct_change().tail(5).dropna()
+                avg_return = recent_returns.mean() * 100
+                macro_return = avg_return * 0.8
+            else:
+                macro_return = 0.3  # 小幅正向
             macro_price = current_price * (1 + macro_return / 100)
-        
+
         # 基本面模型预测
         fund_price = current_price
         fund_return = 0.0
         try:
-            fund_price = self.fund_model.predict(horizon)
-            fund_return = (fund_price - current_price) / current_price * 100
-            logger.info(f"基本面模型预测: ¥{fund_price:,.2f} ({fund_return:+.2f}%)")
+            # 需要先训练模型
+            self.fund_model.train(current_data)
+            # 基本面模型使用180天预测,不管传入的horizon是多少
+            fund_horizon = 180
+            fund_pred = self.fund_model.predict(current_data, horizon=fund_horizon)
+            fund_price = fund_pred['predicted_price']
+            fund_return = fund_pred['predicted_return']
+            logger.info(f"基本面模型预测 ({fund_horizon}天): ¥{fund_price:,.2f} ({fund_return:+.2f}%)")
         except Exception as e:
             logger.warning(f"基本面模型预测失败: {e}，使用默认值")
-            fund_return = 0.97
+            # 基于最近趋势计算，而不是固定0.97%
+            if len(current_data) >= 5:
+                recent_returns = current_data['close'].pct_change().tail(5).dropna()
+                avg_return = recent_returns.mean() * 100
+                fund_return = avg_return * 0.6
+            else:
+                fund_return = 0.2  # 小幅正向
             fund_price = current_price * (1 + fund_return / 100)
         
-        # 6. 加权融合（传统模型）
-        weighted_return = (
-            xgboost_return * weights['xgboost'] +
-            macro_return * weights['macro'] +
-            fund_return * weights['fundamental']
+        # 6. 加权融合（传统模型）- 修复逻辑：应该对价格加权，而不是收益率加权
+        weighted_price = (
+            xgboost_price * weights['xgboost'] +
+            macro_price * weights['macro'] +
+            fund_price * weights['fundamental']
         )
-        weighted_price = current_price * (1 + weighted_return / 100)
+        weighted_return = (weighted_price - current_price) / current_price * 100
 
         logger.info(f"加权融合: ¥{weighted_price:,.2f} ({weighted_return:+.2f}%)")
 
@@ -286,33 +331,38 @@ class IntegratedPredictionSystem:
         logger.info(f"调整详情: {'; '.join(risk_adjusted['adjustment_details'])}")
 
         # 8. 集成系统预测（综合所有因素）
-        # 集成预测 = 传统模型加权 + 市场状态调整 + 情绪调整 + 风险调整
+        # 集成预测 = 传统模型加权 + 市场状态调整 + 风险调整（不依赖新闻情绪）
         integrated_return = weighted_return
 
         # 根据市场状态调整
         if market_state == 'bull':
-            integrated_return *= 1.05  # 牛市增加5%
+            # 牛市：如果是正预测增加，如果是负预测减小幅度
+            if integrated_return >= 0:
+                integrated_return *= 1.05  # 正向预测增加5%
+            else:
+                integrated_return *= 0.95  # 负向预测减小5%（趋向于0）
+            logger.info(f"市场状态牛市调整: {integrated_return:+.2f}%")
         elif market_state == 'bear':
-            integrated_return *= 0.95  # 熊市减少5%
+            # 熊市：如果是正预测减小，如果是负预测增加
+            if integrated_return >= 0:
+                integrated_return *= 0.95  # 正向预测减少5%
+            else:
+                integrated_return *= 1.05  # 负向预测增加5%（更看跌）
+            logger.info(f"市场状态熊市调整: {integrated_return:+.2f}%")
         elif market_state == 'crisis':
-            integrated_return *= 0.85  # 危机减少15%
+            # 危机：大幅向下调整
+            integrated_return *= 0.85  # 减少15%
+            logger.info(f"市场状态危机调整: {integrated_return:+.2f}%")
 
-        # 根据新闻情绪调整
-        news_sentiment = enhanced_data.get('news_sentiment', {})
-        sentiment_score = news_sentiment.get('overall_sentiment_score', 0)
-        if sentiment_score > 0.2:
-            integrated_return *= 1.03  # 正面情绪增加3%
-        elif sentiment_score < -0.2:
-            integrated_return *= 0.97  # 负面情绪减少3%
-
-        # 应用风险调整（只应用一次）
+        # 应用风险调整
         integrated_return *= risk_factor
+        logger.info(f"风险调整后: {integrated_return:+.2f}%")
 
         # 计算最终价格
         final_price = current_price * (1 + integrated_return / 100)
         final_return = integrated_return
 
-        # 同时计算增强调整价格（仅风险调整，不含市场和情绪因素）
+        # 同时计算增强调整价格（仅风险调整）
         enhanced_price = weighted_price * risk_factor
         enhanced_return = (enhanced_price - current_price) / current_price * 100
 
@@ -507,11 +557,6 @@ class IntegratedPredictionSystem:
         print(f"  VIX: {macro['vix']['value']:.1f}")
         
         news = enhanced['news_sentiment']
-        if 'error' not in news:
-            print(f"  新闻情绪: {news['overall_sentiment']} ({news['overall_sentiment_score']:.2f})")
-            if news.get('has_emergency', False):
-                print(f"  ⚠️  检测到突发事件: {len(news['emergency_events'])}个")
-        
         # 对比原预测（仅XGBoost）
         xgboost_only_return = result['models']['xgboost']['return_pct']
         integrated_return = result['final_prediction']['return_pct']

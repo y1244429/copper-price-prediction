@@ -32,6 +32,76 @@ VIX_CACHE = {
 VIX_CACHE_DURATION = 3600  # 缓存1小时（秒）
 
 
+class CopperVolatilityCalculator:
+    """铜价波动率计算器 - 基于新浪期货数据"""
+
+    def __init__(self, period=20):
+        """
+        初始化波动率计算器
+
+        Args:
+            period: 计算周期（天数），默认20天
+        """
+        from collections import deque
+        self.prices = deque(maxlen=period+1)
+        self.period = period
+
+    def add_price(self, price):
+        """
+        添加价格并计算波动率
+
+        Args:
+            price: 铜价（美元/磅或人民币/吨）
+
+        Returns:
+            年化波动率（百分比），如果数据不足则返回None
+        """
+        self.prices.append(float(price))
+
+        if len(self.prices) >= 2:
+            # 计算日收益率（使用对数收益率）
+            returns = []
+            prices_list = list(self.prices)
+            for i in range(1, len(prices_list)):
+                daily_return = np.log(prices_list[i] / prices_list[i-1])
+                returns.append(daily_return)
+
+            if len(returns) >= 2:
+                # 年化波动率
+                volatility = np.std(returns) * np.sqrt(252) * 100
+                return volatility
+
+        return None
+
+    def calculate_from_dataframe(self, df, price_column='close'):
+        """
+        从DataFrame计算波动率
+
+        Args:
+            df: 价格数据DataFrame
+            price_column: 价格列名
+
+        Returns:
+            年化波动率（百分比），如果数据不足则返回None
+        """
+        if len(df) < self.period + 1:
+            return None
+
+        # 计算日收益率
+        df = df.sort_values('date')
+        returns = df[price_column].pct_change().dropna()
+
+        # 使用最近period天的数据
+        recent_returns = returns.tail(self.period)
+
+        if len(recent_returns) >= 2:
+            # 年化波动率
+            volatility = recent_returns.std() * np.sqrt(252) * 100
+            return volatility
+
+        return None
+
+
 class RealMacroData:
     """真实宏观数据获取 - 使用AKShare"""
     
@@ -51,35 +121,88 @@ class RealMacroData:
     def get_dollar_index_realtime(self) -> Dict:
         """
         获取实时美元指数
-        数据源: AKShare (汇率数据)
+        数据源优先级: 新浪财经API > 新浪外汇API > AKShare (汇率数据)
         """
         try:
-            if not self.ak_available:
-                return self._get_fallback_dollar_index()
-
-            import akshare as ak
-
-            # 获取美元兑人民币汇率作为代理指标
+            # 方法1: 新浪财经美元指数API (优先)
             try:
-                df = ak.fx_spot_quote()
-                if not df.empty:
-                    # 查找USD/CNY
-                    usd_cny = df[df['货币对'] == 'USD/CNY'] if '货币对' in df.columns else df.head(1)
-                    if not usd_cny.empty:
-                        price = float(usd_cny.iloc[0]['最新价']) if '最新价' in usd_cny.columns else 7.2
-                        # USD/CNY汇率越高，美元指数越高，使用更合理的转换公式
-                        # 基准：USD/CNY 7.2 ≈ DXY 100
-                        dollar_index = price / 7.2 * 100
-
-                        return {
-                            'timestamp': datetime.now(),
-                            'value': round(dollar_index, 2),
-                            'source': 'AKShare (USD/CNY汇率)',
-                            'date': datetime.now().strftime('%Y-%m-%d'),
-                            'usd_cny_rate': price
-                        }
+                import requests
+                import re
+                url = "http://hq.sinajs.cn/list=DINIW"
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': '*/*',
+                    'Referer': 'https://finance.sina.com.cn/',
+                }
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    match = re.search(r'"([^"]*)"', response.text)
+                    if match:
+                        data = match.group(1)
+                        fields = data.split(',')
+                        if len(fields) >= 2:
+                            dxy_price = float(fields[1])
+                            logger.info(f"✓ 获取美元指数 (新浪财经): {dxy_price:.3f}")
+                            return {
+                                'timestamp': datetime.now(),
+                                'value': round(dxy_price, 2),
+                                'source': '新浪财经 (DINIW)',
+                                'date': datetime.now().strftime('%Y-%m-%d')
+                            }
             except Exception as e:
-                logger.warning(f"AKShare美元汇率获取失败: {e}")
+                logger.warning(f"新浪财经获取美元指数失败: {e}")
+
+            # 方法2: 新浪外汇API
+            try:
+                import requests
+                import re
+                url = "http://hq.sinajs.cn/list=USDX"
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': '*/*',
+                    'Referer': 'https://finance.sina.com.cn/forex/',
+                }
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    match = re.search(r'"([^"]*)"', response.text)
+                    if match:
+                        data = match.group(1)
+                        fields = data.split(',')
+                        if len(fields) >= 2 and fields[1]:
+                            dxy_price = float(fields[1])
+                            logger.info(f"✓ 获取美元指数 (新浪外汇): {dxy_price:.3f}")
+                            return {
+                                'timestamp': datetime.now(),
+                                'value': round(dxy_price, 2),
+                                'source': '新浪外汇 (USDX)',
+                                'date': datetime.now().strftime('%Y-%m-%d')
+                            }
+            except Exception as e:
+                logger.warning(f"新浪外汇获取美元指数失败: {e}")
+
+            # 方法3: 使用AKShare获取美元兑人民币汇率作为代理指标
+            if self.ak_available:
+                try:
+                    import akshare as ak
+                    df = ak.fx_spot_quote()
+                    if not df.empty:
+                        # 查找USD/CNY
+                        usd_cny = df[df['货币对'] == 'USD/CNY'] if '货币对' in df.columns else df.head(1)
+                        if not usd_cny.empty:
+                            price = float(usd_cny.iloc[0]['最新价']) if '最新价' in usd_cny.columns else 7.2
+                            # USD/CNY汇率越高，美元指数越高，使用更合理的转换公式
+                            # 基准：USD/CNY 7.2 ≈ DXY 100
+                            dollar_index = price / 7.2 * 100
+                            logger.info(f"✓ 获取美元指数 (USD/CNY汇率): {price:.4f} → DXY: {dollar_index:.2f}")
+                            return {
+                                'timestamp': datetime.now(),
+                                'value': round(dollar_index, 2),
+                                'source': 'AKShare (USD/CNY汇率)',
+                                'date': datetime.now().strftime('%Y-%m-%d'),
+                                'usd_cny_rate': price
+                            }
+                except Exception as e:
+                    logger.warning(f"AKShare美元汇率获取失败: {e}")
 
             return self._get_fallback_dollar_index()
 
@@ -197,7 +320,7 @@ class RealMacroData:
             }
     
     def get_vix_realtime(self) -> Dict:
-        """获取VIX恐慌指数"""
+        """获取VIX恐慌指数 - 基于新浪期货铜价实时计算波动率"""
         global VIX_CACHE
 
         try:
@@ -215,11 +338,96 @@ class RealMacroData:
                     'is_high': VIX_CACHE['value'] > 20
                 }
 
-            # 尝试使用yfinance获取真实VIX数据
+            # 方法1: 使用新浪期货数据计算铜价波动率（最准确）
+            try:
+                from data.real_data import RealDataManager
+                data_mgr = RealDataManager()
+
+                # 获取60天数据用于计算20天波动率
+                df = data_mgr.get_full_data(days=60)
+
+                if not df.empty and len(df) >= 20:
+                    # 创建波动率计算器
+                    calc = CopperVolatilityCalculator(period=20)
+
+                    # 从DataFrame计算波动率
+                    volatility = calc.calculate_from_dataframe(df, price_column='close')
+
+                    if volatility:
+                        # 将铜波动率转换为VIX风格指数
+                        # 铜波动率通常比VIX高，系数约0.5-0.6
+                        vix_value = volatility * 0.55
+
+                        # 更新缓存
+                        VIX_CACHE['value'] = vix_value
+                        VIX_CACHE['timestamp'] = current_time
+                        VIX_CACHE['source'] = '新浪期货铜价'
+
+                        logger.info(f"✅ 新浪期货铜价波动率: {volatility:.2f}% -> VIX: {vix_value:.2f}")
+                        return {
+                            'timestamp': current_time,
+                            'value': round(vix_value, 2),
+                            'source': '新浪期货铜价 (波动率)',
+                            'date': current_time.strftime('%Y-%m-%d'),
+                            'is_high': vix_value > 20
+                        }
+            except Exception as e:
+                logger.warning(f"计算新浪期货铜价波动率失败: {e}，尝试备用方法")
+
+            # 方法2: 使用新浪实时铜价计算（备用）
+            try:
+                # 新浪COMEX铜期货实时价格
+                url = "http://hq.sinajs.cn/list=hf_CL0"  # COMEX铜期货
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    'Referer': 'https://finance.sina.com.cn/futuremarket/'
+                }
+                response = requests.get(url, headers=headers, timeout=10)
+
+                if response.status_code == 200:
+                    # 解析新浪格式: var hq_str_hf_CL0="4.455,4.456,..."
+                    match = response.text.split('"')[1]
+                    if match:
+                        fields = match.split(',')
+                        if len(fields) >= 2:
+                            # 获取最新价
+                            current_price = float(fields[1])
+
+                            # 使用RealDataManager获取历史数据
+                            from data.real_data import RealDataManager
+                            data_mgr = RealDataManager()
+                            df = data_mgr.get_full_data(days=20)
+
+                            if not df.empty and len(df) >= 2:
+                                # 添加当前价格
+                                calc = CopperVolatilityCalculator(period=20)
+                                for _, row in df.iterrows():
+                                    calc.add_price(row['close'])
+                                vix_like = calc.add_price(current_price)
+
+                                if vix_like:
+                                    vix_value = vix_like * 0.55
+
+                                    # 更新缓存
+                                    VIX_CACHE['value'] = vix_value
+                                    VIX_CACHE['timestamp'] = current_time
+                                    VIX_CACHE['source'] = '新浪期货'
+
+                                    logger.info(f"✅ 新浪期货实时波动率: {vix_like:.2f}% -> VIX: {vix_value:.2f}")
+                                    return {
+                                        'timestamp': current_time,
+                                        'value': round(vix_value, 2),
+                                        'source': '新浪期货 (实时)',
+                                        'date': current_time.strftime('%Y-%m-%d'),
+                                        'is_high': vix_value > 20
+                                    }
+            except Exception as e:
+                logger.warning(f"新浪期货实时计算失败: {e}")
+
+            # 方法3: yfinance VIX (作为参考)
             if YFINANCE_AVAILABLE:
                 try:
                     vix = yf.Ticker("^VIX")
-                    # 获取最新数据
                     hist = vix.history(period="5d", interval="1d")
                     if len(hist) > 0:
                         latest_vix = float(hist['Close'].iloc[-1])
@@ -229,17 +437,16 @@ class RealMacroData:
                         VIX_CACHE['timestamp'] = current_time
                         VIX_CACHE['source'] = 'yfinance'
 
-                        logger.info(f"✅ VIX实时数据: {latest_vix:.2f} (yfinance)")
+                        logger.info(f"✅ yfinance VIX (参考): {latest_vix:.2f}")
                         return {
                             'timestamp': current_time,
                             'value': latest_vix,
-                            'source': 'yfinance (实时数据)',
+                            'source': 'yfinance (VIX指数，参考)',
                             'date': hist.index[-1].strftime('%Y-%m-%d'),
                             'is_high': latest_vix > 20
                         }
                 except Exception as e:
-                    logger.warning(f"yfinance获取VIX失败: {e}，尝试备用数据")
-                    pass
+                    logger.warning(f"yfinance获取VIX失败: {e}，使用备用数据")
 
             # 备用数据
             fallback_data = self._get_fallback_vix()
@@ -510,26 +717,28 @@ class RealNewsAnalyzer:
         """
         获取财经新闻
         数据源: AKShare财经新闻
+        如果获取失败,返回空列表(不使用备用数据)
         """
         try:
             if not self.ak_available:
-                return self._get_fallback_news()
-            
+                logger.info("⚠️  AKShare不可用,新闻情绪设为中性")
+                return []
+
             import akshare as ak
-            
+
             news_list = []
-            
+
             try:
                 # 获取东方财富要闻
                 df = ak.news_em(symbol="期货")
-                
+
                 if not df.empty:
                     for idx, row in df.head(num_articles).iterrows():
                         title = row.get('新闻标题', '')
                         url = row.get('新闻链接', '')
-                        
+
                         sentiment = self._analyze_sentiment(title)
-                        
+
                         news_list.append({
                             'title': title,
                             'url': url,
@@ -538,19 +747,21 @@ class RealNewsAnalyzer:
                             'sentiment': sentiment['sentiment'],
                             'sentiment_score': sentiment['score']
                         })
-                
+
                 if len(news_list) > 0:
                     logger.info(f"✅ 从AKShare获取 {len(news_list)} 条新闻")
                     return news_list
-                    
+                else:
+                    logger.info("⚠️  未获取到新闻,新闻情绪设为中性")
+                    return []
+
             except Exception as e:
-                logger.warning(f"AKShare新闻获取失败: {e}")
-                
-            return self._get_fallback_news()
-            
+                logger.warning(f"AKShare新闻获取失败: {e},新闻情绪设为中性")
+                return []
+
         except Exception as e:
-            logger.error(f"获取新闻失败: {e}")
-            return self._get_fallback_news()
+            logger.error(f"获取新闻失败: {e},新闻情绪设为中性")
+            return []
     
     def _analyze_sentiment(self, text: str) -> Dict:
         """简单情绪分析"""
@@ -752,23 +963,25 @@ class RealEnhancedDataManager:
                 'message': f'VIX指数({vix:.1f}),市场存在波动风险'
             })
 
-        # 2. 美元指数风险 - 大幅降低阈值
+        # 2. 美元指数风险 - 根据当前市场调整阈值
         dollar = data['macro']['dollar_index'].get('value', 103.0)
-        if dollar > 103:  # 原来是100
+        # 当前美元指数99左右，铜价下跌，说明市场对美元指数高度敏感
+        # 降低阈值到98.5，使得当前美元指数能触发中等风险
+        if dollar > 101:  # 原来是103
             signals.append({
                 'type': 'macro',
                 'indicator': 'Dollar Index',
                 'value': dollar,
                 'level': 'high',
-                'message': f'美元指数偏高({dollar:.2f}),对铜价形成压制'
+                'message': f'美元指数偏高({dollar:.2f}),对铜价形成强力压制'
             })
-        elif dollar >= 100:  # 原来是97，修改为>=100包含边界值
+        elif dollar >= 98.5:  # 原来是100，降低到98.5
             signals.append({
                 'type': 'macro',
                 'indicator': 'Dollar Index',
                 'value': dollar,
                 'level': 'medium',
-                'message': f'美元指数({dollar:.2f}),对铜价有压力'
+                'message': f'美元指数({dollar:.2f}),对铜价形成压力'
             })
 
         # 3. PMI风险 - 降低阈值
