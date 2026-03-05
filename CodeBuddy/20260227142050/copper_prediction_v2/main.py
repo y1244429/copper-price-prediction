@@ -32,6 +32,7 @@ from models.model_validation import (
 from data.data_sources import MockDataSource, AKShareDataSource, DataMerger
 from data.real_data import RealDataManager, get_data_source
 from data.prediction_db import PredictionDatabase
+from run_integrated_prediction import IntegratedPredictionSystem
 try:
     from data.scheduler import TaskScheduler, create_default_scheduler, SCHEDULE_AVAILABLE
 except ImportError:
@@ -495,6 +496,17 @@ class CopperPredictionSystem:
             except Exception as e:
                 print(f"    基本面模型预测失败: {e}")
 
+        # 3. 获取集成预测系统的结果（增强系统和集成系统）
+        integrated_preds = self.get_integrated_predictions()
+        enhanced_pred_5d = integrated_preds['enhanced_system'].get('5d', 0)
+        enhanced_pred_30d = integrated_preds['enhanced_system'].get('30d', 0)
+        integrated_pred_5d = integrated_preds['integrated_system'].get('5d', 0)
+        integrated_pred_30d = integrated_preds['integrated_system'].get('30d', 0)
+        enhanced_return_5d = integrated_preds['enhanced_system'].get('5d_return', 0)
+        enhanced_return_30d = integrated_preds['enhanced_system'].get('30d_return', 0)
+        integrated_return_5d = integrated_preds['integrated_system'].get('5d_return', 0)
+        integrated_return_30d = integrated_preds['integrated_system'].get('30d_return', 0)
+
         # 3. 特征重要性
         if self.explainer:
             importance = self.explainer.get_feature_importance(self.current_features)
@@ -569,6 +581,37 @@ class CopperPredictionSystem:
                 for key, value in fundamental_pred['key_indicators'].items():
                     report += f"    {key}: {value:,.2f}\n"
 
+        # 添加增强系统预测
+        if enhanced_pred_5d > 0:
+            report += f"""增强系统预测（动态权重融合）
+  市场状态: {integrated_preds.get('market_state', 'unknown')}
+  短期 (5天): ¥{enhanced_pred_5d:,.2f} ({enhanced_return_5d:+.2f}%)
+  中期 (30天): ¥{enhanced_pred_30d:,.2f} ({enhanced_return_30d:+.2f}%)
+"""
+
+            # 添加权重信息
+            if integrated_preds.get('weights'):
+                report += "  模型权重:\n"
+                for model, weight in integrated_preds['weights'].items():
+                    report += f"    {model}: {weight:.2%}\n"
+
+            report += "\n"
+
+        # 添加集成系统预测
+        if integrated_pred_5d > 0:
+            report += f"""集成系统预测（风险调整后）
+  置信度: {integrated_preds.get('risk_adjustment', {}).get('confidence_level', 'unknown')}
+  短期 (5天): ¥{integrated_pred_5d:,.2f} ({integrated_return_5d:+.2f}%)
+  中期 (30天): ¥{integrated_pred_30d:,.2f} ({integrated_return_30d:+.2f}%)
+"""
+
+            # 添加风险调整信息
+            risk_adjustment = integrated_preds.get('risk_adjustment', {})
+            if risk_adjustment.get('adjustment_details'):
+                report += "  风险调整:\n"
+                for detail in risk_adjustment['adjustment_details']:
+                    report += f"    • {detail}\n"
+
         report += """━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【关键因子】
@@ -614,16 +657,26 @@ class CopperPredictionSystem:
         print(f"✓ HTML报告已保存: {html_report_file}")
 
         # 保存到数据库
-        self._save_prediction_to_db(stats, short_pred, medium_pred, macro_pred, 
-                                     fundamental_pred, report_date)
+        self._save_prediction_to_db(stats, short_pred, medium_pred, macro_pred,
+                                     fundamental_pred, report_date,
+                                     enhanced_pred_5d, enhanced_pred_30d,
+                                     integrated_pred_5d, integrated_pred_30d,
+                                     enhanced_return_5d, enhanced_return_30d,
+                                     integrated_return_5d, integrated_return_30d,
+                                     integrated_preds)
 
         return report
 
     def _save_prediction_to_db(self, stats, short_pred, medium_pred, macro_pred,
-                               fundamental_pred, report_date):
+                               fundamental_pred, report_date,
+                               enhanced_pred_5d, enhanced_pred_30d,
+                               integrated_pred_5d, integrated_pred_30d,
+                               enhanced_return_5d, enhanced_return_30d,
+                               integrated_return_5d, integrated_return_30d,
+                               integrated_preds):
         """
         保存预测结果到数据库
-        
+
         Args:
             stats: 基础统计数据
             short_pred: 短期预测（5天）
@@ -631,6 +684,15 @@ class CopperPredictionSystem:
             macro_pred: 宏观模型预测
             fundamental_pred: 基本面模型预测
             report_date: 报告日期
+            enhanced_pred_5d: 增强系统5天预测价格
+            enhanced_pred_30d: 增强系统30天预测价格
+            integrated_pred_5d: 集成系统5天预测价格
+            integrated_pred_30d: 集成系统30天预测价格
+            enhanced_return_5d: 增强系统5天预测收益率
+            enhanced_return_30d: 增强系统30天预测收益率
+            integrated_return_5d: 集成系统5天预测收益率
+            integrated_return_30d: 集成系统30天预测收益率
+            integrated_preds: 集成预测完整结果
         """
         try:
             prediction_date = report_date.strftime('%Y-%m-%d')
@@ -650,6 +712,10 @@ class CopperPredictionSystem:
                 'fundamental_6month': fundamental_pred.get('predicted_price'),
                 'lstm_5day': None,
                 'lstm_10day': None,
+                'enhanced_system_5day': enhanced_pred_5d if enhanced_pred_5d > 0 else None,
+                'enhanced_system_30day': enhanced_pred_30d if enhanced_pred_30d > 0 else None,
+                'integrated_system_5day': integrated_pred_5d if integrated_pred_5d > 0 else None,
+                'integrated_system_30day': integrated_pred_30d if integrated_pred_30d > 0 else None,
                 'overall_trend': self._determine_overall_trend(short_pred, macro_pred, fundamental_pred),
                 'confidence': 0.75,  # 默认置信度，可以根据模型准确度计算
                 'risk_level': self._determine_risk_level(stats),
@@ -702,7 +768,15 @@ class CopperPredictionSystem:
                 'prediction_details': {
                     'xgboost': short_pred,
                     'macro': macro_pred,
-                    'fundamental': fundamental_pred
+                    'fundamental': fundamental_pred,
+                    'enhanced_system': {
+                        '5day': {'predicted_price': enhanced_pred_5d, 'predicted_return': enhanced_return_5d},
+                        '30day': {'predicted_price': enhanced_pred_30d, 'predicted_return': enhanced_return_30d},
+                    },
+                    'integrated_system': {
+                        '5day': {'predicted_price': integrated_pred_5d, 'predicted_return': integrated_return_5d},
+                        '30day': {'predicted_price': integrated_pred_30d, 'predicted_return': integrated_return_30d},
+                    }
                 }
             }
 
@@ -758,6 +832,78 @@ class CopperPredictionSystem:
             return '中风险'
         else:
             return '低风险'
+
+    def get_integrated_predictions(self) -> dict:
+        """获取集成预测系统的所有预测结果"""
+        print("\n[集成预测系统] 获取多模型预测...")
+        
+        try:
+            # 创建集成预测系统
+            integrated_system = IntegratedPredictionSystem()
+            
+            # 获取5天预测
+            prediction_5d = integrated_system.predict_with_integration(horizon=5)
+            
+            # 获取30天预测
+            prediction_30d = integrated_system.predict_with_integration(horizon=30)
+            
+            # 提取各个模型的预测结果
+            # 注意：predict_with_integration返回的字典中，weighted_prediction、risk_adjusted_prediction和final_prediction本身也是字典
+            # 增强系统预测使用风险调整后的值（risk_adjusted_prediction）
+            risk_adjusted_pred_5d = prediction_5d.get('risk_adjusted_prediction', {})
+            final_pred_5d = prediction_5d.get('final_prediction', {})
+            risk_adjusted_pred_30d = prediction_30d.get('risk_adjusted_prediction', {})
+            final_pred_30d = prediction_30d.get('final_prediction', {})
+            
+            results = {
+                'enhanced_system': {
+                    '5d': risk_adjusted_pred_5d.get('price', 0) if isinstance(risk_adjusted_pred_5d, dict) else risk_adjusted_pred_5d,
+                    '5d_return': risk_adjusted_pred_5d.get('return_pct', 0) if isinstance(risk_adjusted_pred_5d, dict) else 0,
+                    '30d': risk_adjusted_pred_30d.get('price', 0) if isinstance(risk_adjusted_pred_30d, dict) else risk_adjusted_pred_30d,
+                    '30d_return': risk_adjusted_pred_30d.get('return_pct', 0) if isinstance(risk_adjusted_pred_30d, dict) else 0,
+                },
+                'integrated_system': {
+                    '5d': final_pred_5d.get('price', 0) if isinstance(final_pred_5d, dict) else final_pred_5d,
+                    '5d_return': final_pred_5d.get('return_pct', 0) if isinstance(final_pred_5d, dict) else 0,
+                    '30d': final_pred_30d.get('price', 0) if isinstance(final_pred_30d, dict) else final_pred_30d,
+                    '30d_return': final_pred_30d.get('return_pct', 0) if isinstance(final_pred_30d, dict) else 0,
+                },
+                'market_state': prediction_5d.get('market_state', 'unknown'),
+                'weights': prediction_5d.get('weights', {}),
+                'risk_adjustment': {
+                    'confidence_level': prediction_5d.get('confidence_level', 'unknown'),
+                    'adjustment_details': prediction_5d.get('risk_adjustment', {}).get('adjustment_details', [])
+                }
+            }
+            
+            print(f"✓ 集成预测完成")
+            print(f"  市场状态: {results['market_state']}")
+            if results['enhanced_system']['5d'] > 0:
+                print(f"  增强系统预测 (5天): ¥{results['enhanced_system']['5d']:,.2f} ({results['enhanced_system']['5d_return']:+.2f}%)")
+            if results['integrated_system']['5d'] > 0:
+                print(f"  集成系统预测 (5天): ¥{results['integrated_system']['5d']:,.2f} ({results['integrated_system']['5d_return']:+.2f}%)")
+            
+            return results
+            
+        except Exception as e:
+            print(f"✗ 集成预测失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 返回空结果
+            return {
+                'enhanced_system': {
+                    '5d': 0, '5d_return': 0,
+                    '30d': 0, '30d_return': 0,
+                },
+                'integrated_system': {
+                    '5d': 0, '5d_return': 0,
+                    '30d': 0, '30d_return': 0,
+                },
+                'market_state': 'unknown',
+                'weights': {},
+                'risk_adjustment': {}
+            }
 
     def _generate_html_report(self, stats, short_pred, medium_pred, top_features, model_metrics,
                              macro_pred=None, fundamental_pred=None, report_date=None) -> str:
@@ -878,6 +1024,17 @@ class CopperPredictionSystem:
             'sharpe_ratio': 0.410
         }
 
+        # 5. 获取集成预测系统结果
+        integrated_preds = self.get_integrated_predictions()
+        enhanced_pred_5d = integrated_preds['enhanced_system'].get('5d', 0)
+        enhanced_pred_30d = integrated_preds['enhanced_system'].get('30d', 0)
+        integrated_pred_5d = integrated_preds['integrated_system'].get('5d', 0)
+        integrated_pred_30d = integrated_preds['integrated_system'].get('30d', 0)
+        enhanced_return_5d = integrated_preds['enhanced_system'].get('5d_return', 0)
+        enhanced_return_30d = integrated_preds['enhanced_system'].get('30d_return', 0)
+        integrated_return_5d = integrated_preds['integrated_system'].get('5d_return', 0)
+        integrated_return_30d = integrated_preds['integrated_system'].get('30d_return', 0)
+
         # 导入PPT生成模块
         try:
             from generate_ppt import create_ppt_report
@@ -888,7 +1045,12 @@ class CopperPredictionSystem:
                 stats, short_pred, medium_pred, top_features,
                 model_metrics, self.current_data, ppt_file,
                 macro_pred=macro_pred, fundamental_pred=fundamental_pred,
-                macro_model=self.macro_model, fundamental_model=self.fundamental_model
+                macro_model=self.macro_model, fundamental_model=self.fundamental_model,
+                enhanced_pred_5d=enhanced_pred_5d, enhanced_pred_30d=enhanced_pred_30d,
+                enhanced_return_5d=enhanced_return_5d, enhanced_return_30d=enhanced_return_30d,
+                integrated_pred_5d=integrated_pred_5d, integrated_pred_30d=integrated_pred_30d,
+                integrated_return_5d=integrated_return_5d, integrated_return_30d=integrated_return_30d,
+                integrated_preds=integrated_preds
             )
 
             print(f"✓ PPT报告已保存: {ppt_file}")

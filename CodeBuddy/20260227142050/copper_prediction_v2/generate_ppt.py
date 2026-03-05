@@ -18,7 +18,10 @@ from pptx.oxml.ns import nsmap
 
 
 def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metrics, data, output_file="report.pptx",
-                    macro_pred=None, fundamental_pred=None, macro_model=None, fundamental_model=None):
+                    macro_pred=None, fundamental_pred=None, macro_model=None, fundamental_model=None,
+                    enhanced_pred_5d=None, enhanced_pred_30d=None, enhanced_return_5d=None, enhanced_return_30d=None,
+                    integrated_pred_5d=None, integrated_pred_30d=None, integrated_return_5d=None, integrated_return_30d=None,
+                    integrated_preds=None):
     """
     生成PPT报告
 
@@ -34,6 +37,15 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
         fundamental_pred: 基本面模型预测（180天）
         macro_model: 宏观因子模型实例（用于获取权重）
         fundamental_model: 基本面模型实例（用于获取权重）
+        enhanced_pred_5d: 增强系统5天预测价格
+        enhanced_pred_30d: 增强系统30天预测价格
+        enhanced_return_5d: 增强系统5天预测收益率
+        enhanced_return_30d: 增强系统30天预测收益率
+        integrated_pred_5d: 集成系统5天预测价格
+        integrated_pred_30d: 集成系统30天预测价格
+        integrated_return_5d: 集成系统5天预测收益率
+        integrated_return_30d: 集成系统30天预测收益率
+        integrated_preds: 集成预测完整结果（包含市场状态、权重等）
     """
     
     # 创建演示文稿
@@ -201,7 +213,17 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
     if fundamental_pred and fundamental_pred.get('predicted_return', 0) != 0 or fundamental_pred.get('predicted_price', 0) != stats.get('current_price', 0):
         predictions.append(("基本面模型 (180天)", fundamental_pred['predicted_price'], fundamental_pred['predicted_return'],
              RGBColor(79, 172, 254)))  # 蓝色
-    
+
+    # 增强系统预测（动态权重融合）
+    if enhanced_pred_5d and enhanced_pred_5d > 0:
+        predictions.append(("增强系统 (5天)", enhanced_pred_5d, enhanced_return_5d if enhanced_return_5d else 0,
+             RGBColor(139, 92, 246)))  # 紫色
+
+    # 集成系统预测（风险调整后）
+    if integrated_pred_5d and integrated_pred_5d > 0:
+        predictions.append(("集成系统 (5天)", integrated_pred_5d, integrated_return_5d if integrated_return_5d else 0,
+             RGBColor(236, 72, 153)))  # 粉红色
+
     # 根据预测数量动态计算卡片宽度
     num_predictions = len(predictions)
     card_width = (11.5 / num_predictions) - 0.3  # 总宽度减去间距
@@ -258,6 +280,158 @@ def create_ppt_report(stats, short_pred, medium_pred, top_features, model_metric
     compare_frame.paragraphs[0].font.color.rgb = BLACK
     compare_frame.paragraphs[0].font.bold = True
     compare_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+
+    # ========== 集成系统分析页 ==========
+    if integrated_preds and integrated_preds.get('market_state'):
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+        # 添加标题
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12.333), Inches(0.8))
+        title_frame = title_box.text_frame
+        title_frame.text = "🔮 集成系统分析"
+        title_frame.paragraphs[0].font.size = Pt(44)
+        title_frame.paragraphs[0].font.bold = True
+        title_frame.paragraphs[0].font.color.rgb = PRIMARY_COLOR
+
+        # 市场状态
+        market_state = integrated_preds.get('market_state', 'unknown')
+        market_state_text = {
+            'bull': '牛市',
+            'bear': '熊市',
+            'normal': '正常',
+            'risky': '风险',
+            'crisis': '危机'
+        }.get(market_state, '未知')
+
+        # 市场状态卡片
+        state_color = {
+            'bull': RGBColor(16, 185, 129),      # 绿色
+            'bear': RGBColor(239, 68, 68),       # 红色
+            'normal': RGBColor(102, 126, 234),   # 蓝色
+            'risky': RGBColor(245, 158, 11),    # 橙色
+            'crisis': RGBColor(185, 28, 28)      # 深红色
+        }.get(market_state, GRAY)
+
+        state_card = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(0.5), Inches(1.5), Inches(6), Inches(1.5)
+        )
+        state_card.fill.solid()
+        state_card.fill.fore_color.rgb = state_color
+        state_card.line.color.rgb = WHITE
+
+        state_text_frame = state_card.text_frame
+        state_p1 = state_text_frame.paragraphs[0]
+        state_p1.text = "市场状态"
+        state_p1.font.size = Pt(20)
+        state_p1.font.color.rgb = WHITE
+        state_p2 = state_text_frame.add_paragraph()
+        state_p2.text = market_state_text
+        state_p2.font.size = Pt(36)
+        state_p2.font.bold = True
+        state_p2.font.color.rgb = WHITE
+        state_p2.space_before = Pt(8)
+
+        # 模型权重
+        weights = integrated_preds.get('weights', {})
+        if weights:
+            weight_text = "\n".join([f"{k}: {v:.1%}" for k, v in weights.items()])
+
+            weight_card = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE,
+                Inches(6.8), Inches(1.5), Inches(6), Inches(1.5)
+            )
+            weight_card.fill.solid()
+            weight_card.fill.fore_color.rgb = SECONDARY_COLOR
+            weight_card.line.color.rgb = WHITE
+
+            weight_text_frame = weight_card.text_frame
+            weight_p1 = weight_text_frame.paragraphs[0]
+            weight_p1.text = "模型权重"
+            weight_p1.font.size = Pt(20)
+            weight_p1.font.color.rgb = WHITE
+            weight_p2 = weight_text_frame.add_paragraph()
+            weight_p2.text = weight_text
+            weight_p2.font.size = Pt(24)
+            weight_p2.font.color.rgb = WHITE
+            weight_p2.space_before = Pt(5)
+
+        # 风险调整
+        risk_adjustment = integrated_preds.get('risk_adjustment', {})
+        adjustment_details = risk_adjustment.get('adjustment_details', [])
+
+        if adjustment_details:
+            risk_text = "\n".join([f"• {detail}" for detail in adjustment_details])
+
+            risk_box = slide.shapes.add_textbox(Inches(0.5), Inches(3.3), Inches(12.333), Inches(1))
+            risk_frame = risk_box.text_frame
+            risk_p1 = risk_frame.paragraphs[0]
+            risk_p1.text = "📊 风险调整"
+            risk_p1.font.size = Pt(22)
+            risk_p1.font.bold = True
+            risk_p1.font.color.rgb = BLACK
+            risk_p2 = risk_frame.add_paragraph()
+            risk_p2.text = risk_text
+            risk_p2.font.size = Pt(20)
+            risk_p2.font.color.rgb = WARNING_COLOR
+            risk_p2.space_before = Pt(8)
+
+        # 置信度
+        confidence = risk_adjustment.get('confidence_level', 'unknown')
+        confidence_text = {
+            'high': '高',
+            'medium': '中',
+            'low': '低'
+        }.get(confidence, '未知')
+
+        confidence_color = {
+            'high': RGBColor(16, 185, 129),
+            'medium': RGBColor(245, 158, 11),
+            'low': RGBColor(239, 68, 68)
+        }.get(confidence, GRAY)
+
+        confidence_card = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(0.5), Inches(4.5), Inches(6), Inches(1)
+        )
+        confidence_card.fill.solid()
+        confidence_card.fill.fore_color.rgb = confidence_color
+        confidence_card.line.color.rgb = WHITE
+
+        conf_text_frame = confidence_card.text_frame
+        conf_p1 = conf_text_frame.paragraphs[0]
+        conf_p1.text = "预测置信度"
+        conf_p1.font.size = Pt(20)
+        conf_p1.font.color.rgb = WHITE
+        conf_p2 = conf_text_frame.add_paragraph()
+        conf_p2.text = confidence_text
+        conf_p2.font.size = Pt(32)
+        conf_p2.font.bold = True
+        conf_p2.font.color.rgb = WHITE
+        conf_p2.space_before = Pt(5)
+
+        # 预测对比
+        if enhanced_pred_5d and integrated_pred_5d:
+            compare_text = f"增强系统: ¥{enhanced_pred_5d:,.2f} ({enhanced_return_5d:+.2f}%)\n集成系统: ¥{integrated_pred_5d:,.2f} ({integrated_return_5d:+.2f}%)\n风险调整: {(integrated_return_5d - enhanced_return_5d):+.2f}%"
+
+            compare_card = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE,
+                Inches(6.8), Inches(4.5), Inches(6), Inches(1)
+            )
+            compare_card.fill.solid()
+            compare_card.fill.fore_color.rgb = ACCENT_COLOR
+            compare_card.line.color.rgb = WHITE
+
+            compare_text_frame = compare_card.text_frame
+            compare_p1 = compare_text_frame.paragraphs[0]
+            compare_p1.text = "系统对比"
+            compare_p1.font.size = Pt(20)
+            compare_p1.font.color.rgb = WHITE
+            compare_p2 = compare_text_frame.add_paragraph()
+            compare_p2.text = compare_text
+            compare_p2.font.size = Pt(18)
+            compare_p2.font.color.rgb = WHITE
+            compare_p2.space_before = Pt(5)
 
     # ========== 宏观因子权重分析页 ==========
     slide = prs.slides.add_slide(prs.slide_layouts[6])
