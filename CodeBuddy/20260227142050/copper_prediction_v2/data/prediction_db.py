@@ -163,6 +163,85 @@ class PredictionDatabase:
                 """
                 return pd.read_sql_query(query, conn, params=(limit,))
     
+    def get_all_predictions(self, limit=100, start_date=None, end_date=None):
+        """
+        获取所有预测记录（Web界面用）
+        
+        Args:
+            limit: 返回记录数限制
+            start_date: 开始日期筛选
+            end_date: 结束日期筛选
+            
+        Returns:
+            list: 预测记录列表（字典格式）
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # 获取表结构
+            columns = [description[0] for description in conn.execute(
+                "PRAGMA table_info(predictions)").fetchall()]
+            
+            # 构建查询
+            if start_date and end_date:
+                query = """
+                    SELECT * FROM predictions 
+                    WHERE prediction_date BETWEEN ? AND ?
+                    ORDER BY prediction_date DESC
+                    LIMIT ?
+                """
+                results = conn.execute(query, (start_date, end_date, limit)).fetchall()
+            elif start_date:
+                query = """
+                    SELECT * FROM predictions 
+                    WHERE prediction_date >= ?
+                    ORDER BY prediction_date DESC
+                    LIMIT ?
+                """
+                results = conn.execute(query, (start_date, limit)).fetchall()
+            elif end_date:
+                query = """
+                    SELECT * FROM predictions 
+                    WHERE prediction_date <= ?
+                    ORDER BY prediction_date DESC
+                    LIMIT ?
+                """
+                results = conn.execute(query, (end_date, limit)).fetchall()
+            else:
+                query = """
+                    SELECT * FROM predictions 
+                    ORDER BY prediction_date DESC
+                    LIMIT ?
+                """
+                results = conn.execute(query, (limit,)).fetchall()
+            
+            # 转换为字典列表
+            return [dict(zip(columns, row)) for row in results]
+    
+    def get_prediction(self, prediction_date):
+        """
+        获取指定日期的预测记录
+        
+        Args:
+            prediction_date: 预测日期 (YYYY-MM-DD格式)
+            
+        Returns:
+            dict: 预测记录，不存在则返回None
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            columns = [description[0] for description in conn.execute(
+                "PRAGMA table_info(predictions)").fetchall()]
+            
+            query = """
+                SELECT * FROM predictions 
+                WHERE prediction_date = ?
+                ORDER BY run_time DESC
+                LIMIT 1
+            """
+            result = conn.execute(query, (prediction_date,)).fetchone()
+            
+            if result:
+                return dict(zip(columns, result))
+            return None
+    
     def get_latest_prediction(self, model_type=None):
         """
         获取最新预测
