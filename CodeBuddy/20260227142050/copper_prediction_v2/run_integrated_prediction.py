@@ -41,9 +41,10 @@ class IntegratedPredictionSystem:
         
         # 基础权重
         self.base_weights = {
-            'xgboost': 0.40,
-            'macro': 0.35,
-            'fundamental': 0.25
+            'xgboost': 0.40,      # XGBoost 40%
+            'enhanced': 0.40,    # 增强数据调整 40%
+            'fundamental': 0.08, # 基本面 8%
+            'macro': 0.02        # 宏观 2%
         }
         
         print("="*70)
@@ -82,25 +83,13 @@ class IntegratedPredictionSystem:
         """动态权重调整 - 基于市场状态，不依赖新闻情绪"""
         weights = self.base_weights.copy()
 
-        # 统一配置：XGBoost 100% | 宏观 0% | 基本面 0%
-        weights['xgboost'] = 1.00
-        weights['macro'] = 0.00
-        weights['fundamental'] = 0.00
+        # 统一配置：XGBoost 40% | 增强数据调整 40% | 基本面 8% | 宏观 2%
+        weights['xgboost'] = 0.40
+        weights['enhanced'] = 0.40
+        weights['fundamental'] = 0.08
+        weights['macro'] = 0.02
 
-        if market_state == 'crisis':
-            logger.info("市场状态: 危机，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
-
-        elif market_state == 'risky':
-            logger.info("市场状态: 风险，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
-
-        elif market_state == 'bull':
-            logger.info("市场状态: 牛市，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
-
-        elif market_state == 'bear':
-            logger.info("市场状态: 熊市，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
-
-        else:
-            logger.info("市场状态: 正常，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
+        logger.info(f"市场状态: {market_state}，权重 - XGBoost 40% | 增强数据调整 40% | 基本面 8% | 宏观 2%")
 
         return weights
     
@@ -305,28 +294,47 @@ class IntegratedPredictionSystem:
                 fund_return = 0.2  # 小幅正向
             fund_price = current_price * (1 + fund_return / 100)
         
-        # 6. 加权融合（传统模型）- 修复逻辑：应该对价格加权，而不是收益率加权
+        # 6. 传统模型加权融合（仅包含XGBoost、宏观、基本面）
+        # 注意：这里计算的是不含增强数据调整的传统模型融合
+        traditional_weights = {
+            'xgboost': weights['xgboost'] + weights['enhanced'],  # XGBoost + 增强数据调整
+            'macro': weights['macro'],
+            'fundamental': weights['fundamental']
+        }
+        
         weighted_price = (
-            xgboost_price * weights['xgboost'] +
-            macro_price * weights['macro'] +
-            fund_price * weights['fundamental']
+            xgboost_price * traditional_weights['xgboost'] +
+            macro_price * traditional_weights['macro'] +
+            fund_price * traditional_weights['fundamental']
         )
         weighted_return = (weighted_price - current_price) / current_price * 100
 
-        logger.info(f"加权融合: ¥{weighted_price:,.2f} ({weighted_return:+.2f}%)")
+        logger.info(f"传统模型加权融合: ¥{weighted_price:,.2f} ({weighted_return:+.2f}%)")
 
-        # 7. 获取风险调整因子（不立即应用到价格，用于集成预测）
-        risk_adjusted = self.apply_risk_adjustment(weighted_price, enhanced_data)
+        # 7. 获取风险调整因子（用于增强数据调整）
+        # 增强数据调整基于XGBoost价格，而非加权融合价格
+        risk_adjusted = self.apply_risk_adjustment(xgboost_price, enhanced_data)
         risk_factor = risk_adjusted['adjustment_factor']
+        enhanced_price = risk_adjusted['adjusted_prediction']
+        enhanced_return = (enhanced_price - current_price) / current_price * 100
 
         logger.info(f"风险调整因子: {risk_factor:.4f}")
         logger.info(f"调整详情: {'; '.join(risk_adjusted['adjustment_details'])}")
+        logger.info(f"增强数据调整价格: ¥{enhanced_price:,.2f} ({enhanced_return:+.2f}%)")
 
         # 8. 集成系统预测（综合所有因素）
-        # 集成预测 = 传统模型加权 + 市场状态调整 + 风险调整（不依赖新闻情绪）
-        integrated_return = weighted_return
+        # 加权融合 = XGBoost 40% + 增强数据调整 40% + 基本面 8% + 宏观 2%
+        integrated_weighted_price = (
+            xgboost_price * weights['xgboost'] +
+            enhanced_price * weights['enhanced'] +
+            fund_price * weights['fundamental'] +
+            macro_price * weights['macro']
+        )
+        integrated_return = (integrated_weighted_price - current_price) / current_price * 100
 
-        # 根据市场状态调整
+        logger.info(f"集成加权融合: ¥{integrated_weighted_price:,.2f} ({integrated_return:+.2f}%)")
+
+        # 9. 根据市场状态调整
         if market_state == 'bull':
             # 牛市：如果是正预测增加，如果是负预测减小幅度
             if integrated_return >= 0:
@@ -346,21 +354,16 @@ class IntegratedPredictionSystem:
             integrated_return *= 0.85  # 减少15%
             logger.info(f"市场状态危机调整: {integrated_return:+.2f}%")
 
-        # 应用风险调整
-        integrated_return *= risk_factor
-        logger.info(f"风险调整后: {integrated_return:+.2f}%")
+        # 应用风险调整（因为增强数据已经在加权融合中，这里不再重复应用）
+        # 集成系统的风险调整已经通过增强数据的权重体现
+        logger.info(f"市场状态调整后: {integrated_return:+.2f}%")
 
         # 计算最终价格
         final_price = current_price * (1 + integrated_return / 100)
         final_return = integrated_return
 
-        # 同时计算增强调整价格（仅风险调整）
-        enhanced_price = weighted_price * risk_factor
-        enhanced_return = (enhanced_price - current_price) / current_price * 100
-
-        logger.info(f"增强数据调整: ¥{enhanced_price:,.2f} ({enhanced_return:+.2f}%)")
         logger.info(f"集成系统预测: ¥{final_price:,.2f} ({final_return:+.2f}%)")
-        
+
         # 8. 生成预测区间
         confidence = risk_adjusted['confidence_level']
         if confidence == 'high':
@@ -392,6 +395,12 @@ class IntegratedPredictionSystem:
                     'return_pct': xgboost_return,
                     'weight': weights['xgboost'],
                     'source': '技术指标'
+                },
+                'enhanced': {
+                    'price': enhanced_price,
+                    'return_pct': enhanced_return,
+                    'weight': weights['enhanced'],
+                    'source': '增强数据调整'
                 },
                 'macro': {
                     'price': macro_price,
@@ -494,8 +503,8 @@ class IntegratedPredictionSystem:
         # 加权融合
         print(f"\n【加权融合】")
         weighted = result['weighted_prediction']
-        print(f"  融合价格: ¥{weighted['price']:,.2f} ({weighted['return_pct']:+.2f}%)")
-        print(f"  权重配置: XGBoost {result['weights']['xgboost']:.0%} | "
+        print(f"  传统模型融合价格: ¥{weighted['price']:,.2f} ({weighted['return_pct']:+.2f}%)")
+        print(f"  传统模型权重配置: XGBoost {result['weights']['xgboost']:.0%} | "
               f"宏观 {result['weights']['macro']:.0%} | "
               f"基本面 {result['weights']['fundamental']:.0%}")
         
@@ -513,7 +522,14 @@ class IntegratedPredictionSystem:
             for i, signal in enumerate(result['risk_signals'][:3], 1):
                 level_icon = '🔴' if signal['level'] == 'high' else '🟡'
                 print(f"    {i}. {level_icon} {signal['message']}")
-        
+
+        # 集成系统加权融合
+        print(f"\n【集成系统加权融合】")
+        print(f"  集成权重配置: XGBoost {result['weights']['xgboost']:.0%} | "
+              f"增强数据调整 {result['weights']['enhanced']:.0%} | "
+              f"宏观 {result['weights']['macro']:.0%} | "
+              f"基本面 {result['weights']['fundamental']:.0%}")
+
         # 最终预测
         print(f"\n【最终预测】")
         final = result['final_prediction']
