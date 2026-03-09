@@ -76,14 +76,17 @@ class PredictionDatabase:
             run_time = pd.get('run_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             
             with sqlite3.connect(self.db_path) as conn:
+                # 使用 INSERT OR REPLACE 来支持同一天多次保存（更新已有记录）
                 conn.execute("""
-                    INSERT INTO predictions 
+                    INSERT OR REPLACE INTO predictions 
                     (prediction_date, run_time, current_price, xgboost_5day, xgboost_10day, xgboost_20day,
                      macro_1month, macro_3month, macro_6month, fundamental_6month,
                      lstm_5day, lstm_10day, enhanced_system_5day, enhanced_system_30day,
                      integrated_system_5day, integrated_system_30day,
                      overall_trend, confidence, risk_level, notes, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                            COALESCE((SELECT created_at FROM predictions WHERE prediction_date = ?), ?), 
+                            ?)
                 """, (
                     pd.get('prediction_date'), run_time, pd.get('current_price'),
                     pd.get('xgboost_5day'), pd.get('xgboost_10day'), pd.get('xgboost_20day'),
@@ -92,7 +95,7 @@ class PredictionDatabase:
                     pd.get('enhanced_system_5day'), pd.get('enhanced_system_30day'),
                     pd.get('integrated_system_5day'), pd.get('integrated_system_30day'),
                     pd.get('overall_trend'), pd.get('confidence'), pd.get('risk_level'),
-                    pd.get('notes'), run_time, run_time
+                    pd.get('notes'), pd.get('prediction_date'), run_time, run_time
                 ))
                 conn.commit()
             return True

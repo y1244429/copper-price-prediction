@@ -3126,17 +3126,17 @@ def run_prediction():
         try:
             # 根据模型类型构建命令
             if model_type == 'macro':
-                cmd = ['python', 'main.py', '--train-macro', '--data-source', data_source]
+                cmd = ['python3', 'main.py', '--train-macro', '--data-source', data_source]
                 if run_validation:
-                    cmd = ['python', 'main.py', '--validate', '--validate-model', 'macro', '--data-source', data_source]
+                    cmd = ['python3', 'main.py', '--validate', '--validate-model', 'macro', '--data-source', data_source]
             elif model_type == 'fundamental':
-                cmd = ['python', 'main.py', '--train-fundamental', '--data-source', data_source]
+                cmd = ['python3', 'main.py', '--train-fundamental', '--data-source', data_source]
                 if run_validation:
-                    cmd = ['python', 'main.py', '--validate', '--validate-model', 'fundamental', '--data-source', data_source]
+                    cmd = ['python3', 'main.py', '--validate', '--validate-model', 'fundamental', '--data-source', data_source]
             else:  # demo - 运行全部模型
-                cmd = ['python', 'main.py', '--demo', '--data-source', data_source]
+                cmd = ['python3', 'main.py', '--demo', '--data-source', data_source]
                 if run_validation:
-                    cmd = ['python', 'main.py', '--train-xgb', '--validate', '--validate-model', 'xgboost', '--data-source', data_source]
+                    cmd = ['python3', 'main.py', '--train-xgb', '--validate', '--validate-model', 'xgboost', '--data-source', data_source]
 
             # 运行命令并捕获输出
             process = subprocess.Popen(
