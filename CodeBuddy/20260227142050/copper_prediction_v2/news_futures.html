@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新闻和期货行情</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .content { padding: 30px; }
+
+        .back-btn {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 25px;
+            border-radius: 25px;
+            text-decoration: none;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+        .back-btn:hover { background: rgba(255, 255, 255, 0.3); transform: translateY(-2px); }
+
+
+
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        /* 新闻卡片样式 */
+        .news-section {
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+        .news-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .news-item {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #ddd;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            position: relative;
+            overflow: hidden;
+        }
+        .news-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .news-item:hover {
+            transform: translateX(8px) translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        }
+        .news-item:hover::before {
+            opacity: 1;
+        }
+        .news-item.positive {
+            border-left-color: #22c55e;
+            background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+        }
+        .news-item.negative {
+            border-left-color: #ef4444;
+            background: linear-gradient(135deg, #ffffff 0%, #fef2f2 100%);
+        }
+        .news-item.neutral {
+            border-left-color: #6b7280;
+        }
+        .news-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .news-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .news-source {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        .news-time {
+            color: #999;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .news-time::before {
+            content: '🕐';
+            font-size: 0.9em;
+        }
+        .news-title {
+            font-weight: 600;
+            font-size: 1.05em;
+            margin-bottom: 10px;
+            color: #1a1a1a;
+            line-height: 1.4;
+        }
+        .news-title-link {
+            color: inherit;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .news-title-link:hover {
+            color: #667eea;
+            text-decoration: underline;
+        }
+        .news-source-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+        .news-source-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+        .news-source-link::after {
+            content: '↗';
+            font-size: 0.9em;
+            margin-left: 3px;
+        }
+            color: #667eea;
+        }
+        .news-summary {
+            font-size: 0.95em;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 0;
+        }
+        .news-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .news-tag.high {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .news-tag.medium {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .news-tag.low {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .news-count {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        /* 期货表格样式 */
+        .futures-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .futures-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+        }
+        .futures-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .futures-table tr:hover { background: #f8f9fa; }
+        .price-up { color: #22c55e; font-weight: bold; }
+        .price-down { color: #ef4444; font-weight: bold; }
+
+        .loading { text-align: center; padding: 40px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📰 铜期货新闻和期货行情</h1>
+            <p>实时铜期货资讯 · 期货价格 · 智能分析</p>
+            <a href="/" class="back-btn">← 返回主页</a>
+        </div>
+
+        <div class="content">
+            <!-- 铜期货新闻 -->
+            <h2 class="section-title">
+                <span>🔔 铜期货新闻</span>
+                <span id="copper-news-time" style="font-size: 0.7em; color: #999;"></span>
+            </h2>
+            <div class="news-section">
+                <div id="finance-news-container" class="loading">加载中...</div>
+            </div>
+
+            <!-- 期货行情 -->
+            <h2 class="section-title" style="margin-top: 30px;">📊 期货行情</h2>
+            <div class="news-section">
+                <table class="futures-table" id="futures-table">
+                    <thead>
+                        <tr>
+                            <th>品种</th>
+                            <th>最新价</th>
+                            <th>涨跌幅</th>
+                            <th>最高价</th>
+                            <th>最低价</th>
+                        </tr>
+                    </thead>
+                    <tbody id="futures-body">
+                        <tr><td colspan="5" class="loading">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 加载新闻
+        async function fetchNews(forceRefresh = false) {
+            try {
+                const url = forceRefresh ? '/api/news?force=true' : '/api/news';
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    displayNews(result.finance_news, 'finance-news-container', '铜期货新闻');
+
+                    // 更新时间戳
+                    if (result.timestamp) {
+                        const timeStr = new Date(result.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                        document.getElementById('copper-news-time').textContent = `最后更新: ${timeStr}`;
+                    }
+                }
+            } catch (error) {
+                console.error('获取新闻失败:', error);
+                document.getElementById('finance-news-container').innerHTML = '<div style="color: #999;">加载失败</div>';
+            }
+        }
+
+        function displayNews(news, containerId, title) {
+            const container = document.getElementById(containerId);
+            if (!news || news.length === 0) {
+                container.innerHTML = '<div style="color: #999; text-align: center; padding: 40px;">暂无新闻</div>';
+                return;
+            }
+
+            const html = news.map(item => `
+                <div class="news-item ${item.sentiment}">
+                    <div class="news-header">
+                        <div class="news-meta">
+                            <span class="news-source">${item.source}</span>
+                            <span class="news-time">${item.time}</span>
+                        </div>
+                        ${item.impact ? `<span class="news-tag ${item.impact}">${item.impact === 'high' ? '🔥 高影响' : item.impact === 'medium' ? '⚡ 中等' : '📌 低影响'}</span>` : ''}
+                    </div>
+                    <div class="news-title">
+                        <a href="${item.link}" target="_blank" class="news-title-link">${item.title}</a>
+                    </div>
+                    <div class="news-summary">${item.summary}</div>
+                    <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+                        <a href="${item.link}" target="_blank" class="news-source-link">查看原文</a>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = `<div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <span class="news-count">📰 共 ${news.length} 条新闻</span>
+            </div>
+            <div class="news-list">${html}</div>`;
+        }
+
+        // 加载期货行情
+        async function fetchFutures() {
+            try {
+                const response = await fetch('/api/futures-quotes');
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    displayFutures(result.quotes);
+                }
+            } catch (error) {
+                console.error('获取期货行情失败:', error);
+                document.getElementById('futures-body').innerHTML = '<tr><td colspan="5" style="color: #999;">加载失败</td></tr>';
+            }
+        }
+
+        function displayFutures(quotes) {
+            const tbody = document.getElementById('futures-body');
+            if (!quotes || quotes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="color: #999;">暂无数据</td></tr>';
+                return;
+            }
+
+            const html = quotes.map(q => `
+                <tr>
+                    <td><strong>${q.name}</strong></td>
+                    <td class="${q.change >= 0 ? 'price-up' : 'price-down'}">${q.price}</td>
+                    <td class="${q.change >= 0 ? 'price-up' : 'price-down'}">${q.changePercent}</td>
+                    <td>${q.high}</td>
+                    <td>${q.low}</td>
+                </tr>
+            `).join('');
+
+            tbody.innerHTML = html;
+        }
+
+        // 页面加载时获取数据
+        fetchNews();
+        fetchFutures();
+
+        // 每2分钟自动刷新新闻（更实时）
+        setInterval(() => {
+            fetchNews();
+        }, 120000);
+
+        // 每5分钟自动刷新期货行情
+        setInterval(() => {
+            fetchFutures();
+        }, 300000);
+    </script>
+</body>
+</html>
