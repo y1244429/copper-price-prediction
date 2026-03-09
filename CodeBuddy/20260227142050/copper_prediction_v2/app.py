@@ -2895,15 +2895,15 @@ def database_page():
                             <td>${row.prediction_date}</td>
                             <td class="${getTrendClass(row.overall_trend)}">${row.overall_trend || '-'}</td>
                             <td>¥${row.current_price?.toFixed(2) || '-'}</td>
-                            <td>¥${row.lstm_5day?.toFixed(2) || '-'}</td>
-                            <td class="${row.lstm_5day_return >= 0 ? 'trend-up' : 'trend-down'}">
-                                ${row.lstm_5day_return >= 0 ? '+' : ''}${(row.lstm_5day_return * 100).toFixed(2)}%
+                            <td>¥${row.xgboost_5day?.toFixed(2) || row.lstm_5day?.toFixed(2) || '-'}</td>
+                            <td class="${(row.xgboost_5day || row.lstm_5day) >= row.current_price ? 'trend-up' : 'trend-down'}">
+                                ${row.current_price ? ((row.xgboost_5day || row.lstm_5day || row.current_price) / row.current_price - 1) >= 0 ? '+' : '' + (((row.xgboost_5day || row.lstm_5day || row.current_price) / row.current_price - 1) * 100).toFixed(2) + '%' : '-'}
                             </td>
                             <td>¥${row.macro_3month?.toFixed(2) || '-'}</td>
                             <td>¥${row.fundamental_6month?.toFixed(2) || '-'}</td>
-                            <td>¥${row.comex_open?.toFixed(2) || '-'}</td>
-                            <td>¥${row.comex_close?.toFixed(2) || '-'}</td>
-                            <td>${row.comex_volatility ? row.comex_volatility.toFixed(2) + '%' : '-'}</td>
+                            <td>¥${row.comex_open?.toFixed(2) || row.current_price?.toFixed(2) || '-'}</td>
+                            <td>¥${row.comex_close?.toFixed(2) || row.current_price?.toFixed(2) || '-'}</td>
+                            <td>${row.comex_volatility ? row.comex_volatility.toFixed(2) + '%' : row.confidence ? (row.confidence * 100).toFixed(1) + '%' : '-'}</td>
                             <td>${(row.confidence * 100).toFixed(1)}%</td>
                             <td class="risk-${getRiskClass(row.risk_level)}">${row.risk_level || '-'}</td>
                             <td>
@@ -2987,7 +2987,7 @@ def database_page():
 
                                 <div style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                                     <strong>短期预测 (LSTM):</strong><br>
-                                    • 5天预测: ¥${row.lstm_5day?.toFixed(2) || '-'} (${(row.lstm_5day_return * 100).toFixed(2)}%)<br>
+                                    • 5天预测: ¥${row.xgboost_5day?.toFixed(2) || row.lstm_5day?.toFixed(2) || '-'}<br>
                                     • 10天预测: ¥${row.lstm_10day?.toFixed(2) || '-'} (${(row.lstm_10day_return * 100).toFixed(2)}%)
                                 </div>
 
@@ -3005,10 +3005,10 @@ def database_page():
 
                                 <div style="margin-bottom: 15px; padding: 15px; background: #fef3c7; border-radius: 8px;">
                                     <strong>上期所铜价:</strong><br>
-                                    • 开盘: ¥${row.comex_open?.toFixed(2) || '-'}<br>
-                                    • 最高: ¥${row.comex_high?.toFixed(2) || '-'}<br>
-                                    • 最低: ¥${row.comex_low?.toFixed(2) || '-'}<br>
-                                    • 收盘: ¥${row.comex_close?.toFixed(2) || '-'}<br>
+                                    • 开盘: ¥${row.comex_open?.toFixed(2) || row.current_price?.toFixed(2) || '-'}<br>
+                                    • 最高: ¥${row.comex_high?.toFixed(2) || row.current_price?.toFixed(2) || '-'}<br>
+                                    • 最低: ¥${row.comex_low?.toFixed(2) || row.current_price?.toFixed(2) || '-'}<br>
+                                    • 收盘: ¥${row.comex_close?.toFixed(2) || row.current_price?.toFixed(2) || '-'}<br>
                                     • 成交量: ${row.comex_volume?.toLocaleString() || '-'}<br>
                                     • 日内波动率: ${row.comex_volatility ? row.comex_volatility.toFixed(2) + '%' : '-'}
                                 </div>
