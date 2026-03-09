@@ -1488,24 +1488,27 @@ HTML_TEMPLATE = """
 
                         <!-- 综合预测 -->
                         <div style="background: white; padding: 25px; border-radius: 12px; border: 2px solid #16a34a; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                            <h4 style="color: #16a34a; margin: 0 0 20px 0; font-size: 1.3em; text-align: center;">🎯 多模型综合预测</h4>
+                            <h4 style="color: #16a34a; margin: 0 0 20px 0; font-size: 1.3em; text-align: center;">🎯 多模型预测方向</h4>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; text-align: center;">
                                 <div>
-                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">综合预测价格</div>
-                                    <div style="font-size: 2.2em; font-weight: bold; color: #16a34a;" id="ensemblePrice">--</div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">XGBoost模型</div>
+                                    <div style="font-size: 1.8em; font-weight: bold;" id="xgboostDirection">--</div>
                                 </div>
                                 <div>
-                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">综合涨跌幅</div>
-                                    <div style="font-size: 2.2em; font-weight: bold;" id="ensembleChange">--</div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">增强系统</div>
+                                    <div style="font-size: 1.8em; font-weight: bold;" id="enhancedDirection">--</div>
                                 </div>
                                 <div>
-                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">预测方向</div>
-                                    <div style="font-size: 1.8em; font-weight: bold; color: #16a34a;" id="ensembleDirection">--</div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">集成系统</div>
+                                    <div style="font-size: 1.8em; font-weight: bold;" id="integratedDirection">--</div>
                                 </div>
                                 <div>
-                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">模型一致性</div>
-                                    <div style="font-size: 1.8em; font-weight: bold;" id="modelConsensus">--</div>
+                                    <div style="color: #666; font-size: 0.95em; margin-bottom: 8px;">多数预测方向</div>
+                                    <div style="font-size: 2.2em; font-weight: bold; color: #16a34a;" id="ensembleDirection">--</div>
                                 </div>
+                            </div>
+                            <div style="margin-top: 20px; text-align: center; color: #666; font-size: 0.95em;">
+                                投票结果: <span id="voteResult">--</span>
                             </div>
                         </div>
 
@@ -2018,54 +2021,57 @@ HTML_TEMPLATE = """
                         updateModelResult('fundamental', results.fundamental);
                     }
 
-                    // 添加集成预测到结果中并重新计算综合预测
-                    if (integratedPrediction && integratedPrediction.integrated) {
-                        results.integrated = integratedPrediction.integrated;
-                        // 重新计算综合预测（基于3个预测结果：XGBoost、宏观、基本面）
-                        if (results.xgboost && results.macro && results.fundamental) {
-                            console.log('各模型价格:');
-                            console.log('  XGBoost:', results.xgboost.price, results.xgboost.change);
-                            console.log('  Macro:', results.macro.price, results.macro.change);
-                            console.log('  Fundamental:', results.fundamental.price, results.fundamental.change);
+                    // 添加集成预测到结果中并重新计算预测方向
+                    if (integratedPrediction) {
+                        // 将集成预测数据添加到results中
+                        results.integrated = integratedPrediction;
 
-                            const avgPrice = (results.xgboost.price + results.macro.price + results.fundamental.price) / 3;
-                            const avgChange = (results.xgboost.change + results.macro.change + results.fundamental.change) / 3;
+                        // 计算预测方向（基于XGBoost、增强系统、集成系统多数投票）
+                        if (results.xgboost && results.integrated) {
+                            console.log('预测方向计算:');
+                            console.log('  XGBoost:', results.xgboost.change, results.xgboost.change > 0 ? '看涨' : results.xgboost.change < 0 ? '看跌' : '观望');
 
-                            console.log('综合预测计算:');
-                            console.log('  平均价格:', avgPrice);
-                            console.log('  平均变化:', avgChange);
+                            // 获取增强系统和集成系统预测
+                            const predictions = results.integrated.predictions || {};
+                            const enhancedChange = predictions.risk_adjusted ?
+                                predictions.risk_adjusted.return_pct :
+                                (predictions.weighted ?
+                                    predictions.weighted.return_pct : 0);
+                            const integratedChange = results.integrated.final_prediction ?
+                                results.integrated.final_prediction.return_pct : 0;
 
-                            // 计算一致性（三个模型方向是否一致且幅度接近）
-                            const directions = [
-                                results.xgboost.change >= 0 ? 1 : -1,
-                                results.macro.change >= 0 ? 1 : -1,
-                                results.fundamental.change >= 0 ? 1 : -1
-                            ];
-                            const sameDirection = directions.every(d => d === directions[0]);
+                            console.log('  增强系统:', enhancedChange, enhancedChange > 0 ? '看涨' : enhancedChange < 0 ? '看跌' : '观望');
+                            console.log('  集成系统:', integratedChange, integratedChange > 0 ? '看涨' : integratedChange < 0 ? '看跌' : '观望');
 
-                            // 检查幅度是否接近（标准差小于平均值的30%）
-                            const changes = [results.xgboost.change, results.macro.change, results.fundamental.change];
-                            const avgChangeAbs = Math.abs(avgChange);
-                            const variance = changes.reduce((sum, val) => sum + Math.pow(val - avgChange, 2), 0) / changes.length;
-                            const stdDev = Math.sqrt(variance);
-                            const similarMagnitude = avgChangeAbs === 0 || (stdDev / avgChangeAbs) < 0.3;
+                            // 多数投票（严格判断：>0看涨，<=0看跌）
+                            const bullishVotes = [
+                                results.xgboost.change > 0,
+                                enhancedChange > 0,
+                                integratedChange > 0
+                            ].filter(v => v).length;
 
-                            const consensus = (sameDirection && similarMagnitude) ? '高度一致' : '存在分歧';
+                            const bearishVotes = 3 - bullishVotes;
+                            const majorityDirection = bullishVotes > bearishVotes ? '看涨' :
+                                                  bearishVotes > bullishVotes ? '看跌' : '观望';
+
+                            console.log('投票结果:', bullishVotes, '票看涨,', bearishVotes, '票看跌');
+                            console.log('预测方向:', majorityDirection);
 
                             results.ensemble = {
-                                price: avgPrice,
-                                change: avgChange,
-                                direction: avgChange >= 0 ? '看涨' : '看跌',
-                                consensus: consensus
+                                direction: majorityDirection,
+                                votes: {
+                                    bullish: bullishVotes,
+                                    bearish: bearishVotes
+                                }
                             };
 
-                            console.log('综合预测结果:', results.ensemble);
+                            console.log('预测方向结果:', results.ensemble);
                         }
                     }
 
                     // 综合预测
                     if (results.ensemble) {
-                        updateEnsembleResult(results.ensemble);
+                        updateEnsembleResult(results.ensemble, results);
                     }
                 } else {
                     // 单模型结果
@@ -2151,33 +2157,28 @@ HTML_TEMPLATE = """
                 };
             }
 
-            // 综合预测（计算3个模型平均值：XGBoost、宏观、基本面）
-            if (results.xgboost && results.macro && results.fundamental) {
-                const avgPrice = (results.xgboost.price + results.macro.price + results.fundamental.price) / 3;
-                const avgChange = (results.xgboost.change + results.macro.change + results.fundamental.change) / 3;
+            // 预测方向（基于XGBoost、增强系统、集成系统多数投票）
+            if (results.xgboost && results.integrated) {
+                const enhancedChange = results.integrated.risk_adjusted ? results.integrated.risk_adjusted.return_pct : results.integrated.weighted.return_pct;
+                const integratedChange = results.integrated.final.return_pct;
 
-                // 计算一致性（三个模型方向是否一致且幅度接近）
-                const directions = [
-                    results.xgboost.change >= 0 ? 1 : -1,
-                    results.macro.change >= 0 ? 1 : -1,
-                    results.fundamental.change >= 0 ? 1 : -1
-                ];
-                const sameDirection = directions.every(d => d === directions[0]);
+                // 多数投票
+                const bullishVotes = [
+                    results.xgboost.change >= 0,
+                    enhancedChange >= 0,
+                    integratedChange >= 0
+                ].filter(v => v).length;
 
-                // 检查幅度是否接近（标准差小于平均值的30%）
-                const changes = [results.xgboost.change, results.macro.change, results.fundamental.change];
-                const avgChangeAbs = Math.abs(avgChange);
-                const variance = changes.reduce((sum, val) => sum + Math.pow(val - avgChange, 2), 0) / changes.length;
-                const stdDev = Math.sqrt(variance);
-                const similarMagnitude = avgChangeAbs === 0 || (stdDev / avgChangeAbs) < 0.3;
-
-                const consensus = (sameDirection && similarMagnitude) ? '高度一致' : '存在分歧';
+                const bearishVotes = 3 - bullishVotes;
+                const majorityDirection = bullishVotes > bearishVotes ? '看涨' :
+                                      bearishVotes > bullishVotes ? '看跌' : '观望';
 
                 results.ensemble = {
-                    price: avgPrice,
-                    change: avgChange,
-                    direction: avgChange >= 0 ? '看涨' : '看跌',
-                    consensus: consensus
+                    direction: majorityDirection,
+                    votes: {
+                        bullish: bullishVotes,
+                        bearish: bearishVotes
+                    }
                 };
             }
 
@@ -2225,43 +2226,37 @@ HTML_TEMPLATE = """
                         integratedChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
                         integratedChange.style.color = change >= 0 ? '#667eea' : '#dc2626';
                     }
-
-                    // 返回所有模型预测数据供综合预测使用
-                    const result = {
-                        integrated: {
-                            price: integrated.price,
-                            change: integrated.return_pct
-                        }
-                    };
-
-                    // XGBoost预测（技术模型）
-                    if (data.predictions && data.predictions.xgboost) {
-                        result.xgboost = {
-                            price: data.predictions.xgboost.price,
-                            change: data.predictions.xgboost.return_pct
-                        };
-                    }
-
-                    // 宏观因子模型预测（ARDL）
-                    if (data.predictions && data.predictions.macro) {
-                        result.macro = {
-                            price: data.predictions.macro.price,
-                            change: data.predictions.macro.return_pct
-                        };
-                    }
-
-                    // 基本面模型预测（VAR）
-                    if (data.predictions && data.predictions.fundamental) {
-                        result.fundamental = {
-                            price: data.predictions.fundamental.price,
-                            change: data.predictions.fundamental.return_pct
-                        };
-                    }
-
-                    return result;
                 }
 
-                return null;
+                // 返回所有模型预测数据供综合预测使用
+                const result = data;
+
+                // XGBoost预测（技术模型）
+                if (data.predictions && data.predictions.xgboost) {
+                    result.xgboost = {
+                        price: data.predictions.xgboost.price,
+                        change: data.predictions.xgboost.return_pct
+                    };
+                }
+
+                // 宏观因子模型预测（ARDL）
+                if (data.predictions && data.predictions.macro) {
+                    result.macro = {
+                        price: data.predictions.macro.price,
+                        change: data.predictions.macro.return_pct
+                    };
+                }
+
+                // 基本面模型预测（VAR）
+                if (data.predictions && data.predictions.fundamental) {
+                    result.fundamental = {
+                        price: data.predictions.fundamental.price,
+                        change: data.predictions.fundamental.return_pct
+                    };
+                }
+
+                return result;
+
             } catch (error) {
                 console.error('加载集成预测失败:', error);
                 return null;
@@ -2285,20 +2280,63 @@ HTML_TEMPLATE = """
         }
 
         // 更新综合预测结果
-        function updateEnsembleResult(data) {
-            console.log('更新综合预测:', data);
-            console.log('综合预测价格:', data.price);
-            console.log('综合预测价格显示:', `¥${data.price.toLocaleString()}`);
+        function updateEnsembleResult(data, allResults) {
+            console.log('更新预测方向:', data);
+            console.log('所有结果:', allResults);
 
-            document.getElementById('ensemblePrice').textContent = `¥${data.price.toLocaleString()}`;
+            // 更新各模型方向
+            if (allResults && allResults.xgboost) {
+                const xgboostDir = allResults.xgboost.change > 0 ? '📈 看涨' : allResults.xgboost.change < 0 ? '📉 看跌' : '⚖️ 观望';
+                const xgboostDirEl = document.getElementById('xgboostDirection');
+                if (xgboostDirEl) {
+                    xgboostDirEl.textContent = xgboostDir;
+                    xgboostDirEl.style.color = allResults.xgboost.change > 0 ? '#16a34a' : allResults.xgboost.change < 0 ? '#dc2626' : '#666';
+                }
+            }
 
-            const changeEl = document.getElementById('ensembleChange');
-            const change = data.change;
-            changeEl.textContent = `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
-            changeEl.style.color = change > 0 ? '#16a34a' : change < 0 ? '#dc2626' : '#666';
+            if (allResults && allResults.integrated) {
+                const predictions = allResults.integrated.predictions || {};
+                const enhancedChange = predictions.risk_adjusted ?
+                    predictions.risk_adjusted.return_pct :
+                    (predictions.weighted ?
+                        predictions.weighted.return_pct : 0);
+                const integratedChange = allResults.integrated.final_prediction ?
+                    allResults.integrated.final_prediction.return_pct : 0;
 
-            document.getElementById('ensembleDirection').textContent = data.direction;
-            document.getElementById('modelConsensus').textContent = data.consensus;
+                const enhancedDir = enhancedChange > 0 ? '📈 看涨' : enhancedChange < 0 ? '📉 看跌' : '⚖️ 观望';
+                const integratedDir = integratedChange > 0 ? '📈 看涨' : integratedChange < 0 ? '📉 看跌' : '⚖️ 观望';
+
+                const enhancedDirEl = document.getElementById('enhancedDirection');
+                const integratedDirEl = document.getElementById('integratedDirection');
+                if (enhancedDirEl) {
+                    enhancedDirEl.textContent = enhancedDir;
+                    enhancedDirEl.style.color = enhancedChange > 0 ? '#16a34a' : enhancedChange < 0 ? '#dc2626' : '#666';
+                }
+                if (integratedDirEl) {
+                    integratedDirEl.textContent = integratedDir;
+                    integratedDirEl.style.color = integratedChange > 0 ? '#16a34a' : integratedChange < 0 ? '#dc2626' : '#666';
+                }
+            }
+
+            // 更新多数预测方向
+            const ensembleDirEl = document.getElementById('ensembleDirection');
+            if (ensembleDirEl) {
+                ensembleDirEl.textContent = data.direction || '--';
+
+                if (data.direction === '看涨') {
+                    ensembleDirEl.style.color = '#16a34a';
+                } else if (data.direction === '看跌') {
+                    ensembleDirEl.style.color = '#dc2626';
+                } else {
+                    ensembleDirEl.style.color = '#666';
+                }
+            }
+
+            // 更新投票结果
+            const voteResultEl = document.getElementById('voteResult');
+            if (voteResultEl && data.votes) {
+                voteResultEl.textContent = `${data.votes.bullish} 票看涨 · ${data.votes.bearish} 票看跌`;
+            }
         }
 
         // 更新单模型预测结果
@@ -5243,6 +5281,6 @@ if __name__ == '__main__':
     # 运行Flask服务器
     app.run(
         host='0.0.0.0',  # 允许外部访问
-        port=8002,
+        port=8001,
         debug=True
     )

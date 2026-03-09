@@ -82,33 +82,25 @@ class IntegratedPredictionSystem:
         """动态权重调整 - 基于市场状态，不依赖新闻情绪"""
         weights = self.base_weights.copy()
 
+        # 统一配置：XGBoost 100% | 宏观 0% | 基本面 0%
+        weights['xgboost'] = 1.00
+        weights['macro'] = 0.00
+        weights['fundamental'] = 0.00
+
         if market_state == 'crisis':
-            # 危机时：降低技术权重，提高宏观权重
-            weights['xgboost'] = 0.20
-            weights['macro'] = 0.50
-            weights['fundamental'] = 0.30
-            logger.info("市场状态: 危机，调整权重 - 技术降权，宏观升权")
+            logger.info("市场状态: 危机，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
 
         elif market_state == 'risky':
-            # 风险期：略微调整
-            weights['xgboost'] = 0.30
-            weights['macro'] = 0.45
-            weights['fundamental'] = 0.25
-            logger.info("市场状态: 风险，调整权重 - 技术降权，宏观升权")
+            logger.info("市场状态: 风险，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
 
         elif market_state == 'bull':
-            # 牛市：基本面升权
-            weights['xgboost'] = 0.35
-            weights['macro'] = 0.30
-            weights['fundamental'] = 0.35
-            logger.info("市场状态: 牛市，调整权重 - 基本面升权")
+            logger.info("市场状态: 牛市，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
 
         elif market_state == 'bear':
-            # 熊市：宏观升权
-            weights['xgboost'] = 0.30
-            weights['macro'] = 0.45
-            weights['fundamental'] = 0.25
-            logger.info("市场状态: 熊市，调整权重 - 宏观升权")
+            logger.info("市场状态: 熊市，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
+
+        else:
+            logger.info("市场状态: 正常，权重 - XGBoost 100% | 宏观 0% | 基本面 0%")
 
         return weights
     
