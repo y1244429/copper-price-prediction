@@ -40,6 +40,8 @@ env/
 *.html
 !index.html
 !README.html
+!integrated_prediction.html
+!news_futures.html
 
 # PPT
 *.pptx
