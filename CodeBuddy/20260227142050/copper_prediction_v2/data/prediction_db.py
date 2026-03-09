@@ -151,14 +151,14 @@ class PredictionDatabase:
                 query = """
                     SELECT * FROM predictions 
                     WHERE model_type = ?
-                    ORDER BY timestamp DESC
+                    ORDER BY run_time DESC
                     LIMIT ?
                 """
                 return pd.read_sql_query(query, conn, params=(model_type, limit))
             else:
                 query = """
                     SELECT * FROM predictions 
-                    ORDER BY timestamp DESC
+                    ORDER BY run_time DESC
                     LIMIT ?
                 """
                 return pd.read_sql_query(query, conn, params=(limit,))
@@ -252,16 +252,28 @@ class PredictionDatabase:
             dict: 最新预测记录
         """
         with sqlite3.connect(self.db_path) as conn:
+            # 启用Row工厂以便使用字段名访问
+            conn.row_factory = sqlite3.Row
+            
             if model_type:
                 query = """
                     SELECT * FROM predictions 
                     WHERE model_type = ?
-                    ORDER BY timestamp DESC
+                    ORDER BY run_time DESC
                     LIMIT 1
                 """
                 result = conn.execute(query, (model_type,)).fetchone()
             else:
                 query = """
+                    SELECT * FROM predictions 
+                    ORDER BY run_time DESC
+                    LIMIT 1
+                """
+                result = conn.execute(query).fetchone()
+            
+            if result:
+                return dict(result)
+            return None
                     SELECT * FROM predictions 
                     ORDER BY timestamp DESC
                     LIMIT 1
