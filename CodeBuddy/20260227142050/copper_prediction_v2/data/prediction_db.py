@@ -176,9 +176,8 @@ class PredictionDatabase:
             list: 预测记录列表（字典格式）
         """
         with sqlite3.connect(self.db_path) as conn:
-            # 获取表结构
-            columns = [description[0] for description in conn.execute(
-                "PRAGMA table_info(predictions)").fetchall()]
+            # 启用Row工厂以便使用字段名访问
+            conn.row_factory = sqlite3.Row
             
             # 构建查询
             if start_date and end_date:
@@ -214,7 +213,7 @@ class PredictionDatabase:
                 results = conn.execute(query, (limit,)).fetchall()
             
             # 转换为字典列表
-            return [dict(zip(columns, row)) for row in results]
+            return [dict(row) for row in results]
     
     def get_prediction(self, prediction_date):
         """
@@ -227,8 +226,8 @@ class PredictionDatabase:
             dict: 预测记录，不存在则返回None
         """
         with sqlite3.connect(self.db_path) as conn:
-            columns = [description[0] for description in conn.execute(
-                "PRAGMA table_info(predictions)").fetchall()]
+            # 启用Row工厂以便使用字段名访问
+            conn.row_factory = sqlite3.Row
             
             query = """
                 SELECT * FROM predictions 
@@ -239,7 +238,7 @@ class PredictionDatabase:
             result = conn.execute(query, (prediction_date,)).fetchone()
             
             if result:
-                return dict(zip(columns, result))
+                return dict(result)
             return None
     
     def get_latest_prediction(self, model_type=None):
